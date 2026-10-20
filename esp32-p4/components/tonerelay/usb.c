@@ -63,6 +63,11 @@ static unsigned s_rx_drops;
 static unsigned s_in_ok;
 static unsigned s_tx_ok;
 static unsigned s_in_logs;
+/* Transfers submitted whose callback has not run yet. helix_usb_close() waits for both to reach zero
+ * before it releases the interface and frees the transfers: freeing a transfer the host library
+ * still has in flight asserts in hcd_urb_dequeue (hcd_dwc.c) when its completion is delivered. */
+static volatile int s_in_flight;
+static volatile int s_out_flight;
 static unsigned s_tx_logs;
 static int s_last_in_n;
 static int s_last_in_st;
@@ -115,8 +120,10 @@ static void post_in(usb_transfer_t *xfer)
     xfer->bEndpointAddress = EP_IN;
     xfer->device_handle = s_dev;
     xfer->timeout_ms = 0;
+    __atomic_fetch_add(&s_in_flight, 1, __ATOMIC_SEQ_CST);
     esp_err_t err = usb_host_transfer_submit(xfer);
     if (err != ESP_OK) {
+        __atomic_fetch_sub(&s_in_flight, 1, __ATOMIC_SEQ_CST);
         ESP_LOGW(TAG, "post_in %s", esp_err_to_name(err));
     }
 }
@@ -178,6 +185,7 @@ static void flush_parked(void)
 
 static void in_cb(usb_transfer_t *xfer)
 {
+    __atomic_fetch_sub(&s_in_flight, 1, __ATOMIC_SEQ_CST);
     if (s_closing) {
         return;
     }
@@ -221,6 +229,7 @@ static void in_cb(usb_transfer_t *xfer)
 
 static void out_cb(usb_transfer_t *xfer)
 {
+    s_out_flight = 0;
     s_out_status = (int)xfer->status;
     s_out_actual = xfer->actual_num_bytes;
     if (s_out_done) {
@@ -551,6 +560,18 @@ int helix_usb_close(void)
         usb_host_endpoint_flush(s_dev, EP_IN);
         usb_host_endpoint_halt(s_dev, EP_OUT);
         usb_host_endpoint_flush(s_dev, EP_OUT);
+        /* The flush cancels what is in flight; the client task delivers those completions
+         * asynchronously. Let them land before the interface, device and transfers go away. */
+        int waited = 0;
+        while ((s_in_flight > 0 || s_out_flight > 0) && waited < 500) {
+            vTaskDelay(pdMS_TO_TICKS(10));
+            waited += 10;
+        }
+        if (s_in_flight > 0 || s_out_flight > 0) {
+            ESP_LOGW(TAG, "close: %d IN and %d OUT still in flight after %d ms", s_in_flight, s_out_flight, waited);
+        } else {
+            ESP_LOGI(TAG, "close: transfers drained in %d ms", waited);
+        }
         usb_host_interface_release(s_client, s_dev, IFACE);
         usb_host_device_close(s_client, s_dev);
         s_dev = NULL;
@@ -590,9 +611,11 @@ int helix_usb_send(const uint8_t *data, size_t len, uint32_t timeout_ms)
     s_out->device_handle = s_dev;
     s_out->timeout_ms = timeout_ms;
     xSemaphoreTake(s_out_done, 0);
+    s_out_flight = 1;
     esp_err_t err = usb_host_transfer_submit(s_out);
     xSemaphoreGive(s_lock);
     if (err != ESP_OK) {
+        s_out_flight = 0;
         return -3;
     }
     TickType_t ticks = pdMS_TO_TICKS(timeout_ms ? timeout_ms : 1);
