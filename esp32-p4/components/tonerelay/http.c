@@ -26,6 +26,9 @@ char *hxbridge_handle_json(const char *json, int json_len);
 char *hxbridge_catalog_reload(void);
 void hxbridge_free(char *p);
 
+void tonerelay_relay_register(httpd_handle_t srv);
+void tonerelay_relay_on_close(httpd_handle_t hd, int fd);
+
 static const char *FALLBACK =
     "<!DOCTYPE html><html><head><meta charset=utf-8>"
     "<meta name=viewport content=\"width=device-width,initial-scale=1\">"
@@ -442,6 +445,7 @@ void tonerelay_http_start(void)
     cfg.send_wait_timeout = 60;
     cfg.uri_match_fn = httpd_uri_match_wildcard;
     cfg.server_port = 80;
+    cfg.close_fn = tonerelay_relay_on_close;
     httpd_handle_t srv = NULL;
     if (httpd_start(&srv, &cfg) != ESP_OK) {
         ESP_LOGE(TAG, "httpd_start failed");
@@ -501,6 +505,7 @@ void tonerelay_http_start(void)
     httpd_register_uri_handler(srv, &cat_commit);
     httpd_register_uri_handler(srv, &cat_put);
     httpd_register_uri_handler(srv, &ws);
+    tonerelay_relay_register(srv); /* before the /* wildcard so /raw and /api/relay match first */
     httpd_register_uri_handler(srv, &any);
     httpd_register_uri_handler(srv, &any_head);
     ESP_LOGI(TAG, "HTTP on :80 (%u web files)", (unsigned)www_files_count);

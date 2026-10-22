@@ -36,9 +36,9 @@ void helix_usb_stats(
     uint32_t *queued
 );
 const char *helix_usb_last_error(void);
+/* Product and serial string descriptors of the open pedal (ASCII, '?' for other characters). 0 on success. */
 /* The product and serial strings read when the pedal enumerated (valid without a session). */
 void helix_usb_cached_strings(char *product, size_t plen, char *serial, size_t slen);
-/* Product and serial string descriptors of the open pedal (ASCII, '?' for other characters). 0 on success. */
 int helix_usb_strings(char *product, size_t plen, char *serial, size_t slen);
 
 void tonerelay_wifi_start(void);
@@ -62,6 +62,10 @@ FILE *tonerelay_catalog_open_put(const char *name);
 int tonerelay_catalog_status_json(char *buf, size_t len);
 
 void tonerelay_http_start(void);
+
+/* Raw relay (docs/raw-relay-protocol.md). While relay-only is on, the box opens no session of its own. */
+void tonerelay_relay_start(void);
+bool tonerelay_relay_only(void);
 void tonerelay_ble_start(void);
 
 #ifdef __cplusplus

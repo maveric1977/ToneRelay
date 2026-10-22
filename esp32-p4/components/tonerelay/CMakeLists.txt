@@ -28,6 +28,7 @@ idf_component_register(
         "usb.c"
         "wifi.c"
         "http.c"
+        "relay.c"
         "ble.c"
         "tonerelay.c"
         "c6_ota.c"
@@ -41,6 +42,7 @@ idf_component_register(
         esp_netif
         esp_event
         esp_http_server
+        lwip
         esp_timer
         mdns
         bt

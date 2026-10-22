@@ -27,6 +27,7 @@ mod ffi {
         pub fn helix_usb_open(pid_out: *mut u16) -> i32;
         pub fn helix_usb_present() -> bool;
         pub fn helix_usb_pid() -> u16;
+        pub fn tonerelay_relay_only() -> bool;
         pub fn helix_usb_enum_gen() -> u32;
         pub fn helix_usb_stats(
             drops: *mut u32,
@@ -102,6 +103,7 @@ impl Bridge {
             && !self.opening
             && self.last_try.elapsed() >= wait
             && unsafe { ffi::helix_usb_present() }
+            && !unsafe { ffi::tonerelay_relay_only() }
     }
 
     fn note_unplugged(&mut self) {
@@ -123,6 +125,17 @@ impl Bridge {
 
     fn tick(&mut self) {
         if self.session.is_none() {
+            return;
+        }
+        if unsafe { ffi::tonerelay_relay_only() } {
+            // Relay-only: the raw client owns the pedal. Dropping the session ends it without a
+            // session close (prototype; turn relay-only on before attaching the pedal).
+            log("relay-only: dropping the box's own session");
+            self.session = None;
+            self.follow = FollowState::default();
+            self.opening = false;
+            self.primed = false;
+            self.hold_open = false;
             return;
         }
         if !unsafe { ffi::helix_usb_present() } {

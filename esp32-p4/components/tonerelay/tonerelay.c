@@ -109,6 +109,7 @@ void tonerelay_start(void)
     vTaskDelay(pdMS_TO_TICKS(400));
     tonerelay_wifi_start();
     tonerelay_c6_sync();
+    tonerelay_relay_start();
     tonerelay_http_start();
     /* C6 2.12.13 VHCI does not answer HCI reset; NimBLE then retries every 2s
      * and starves httpd. Wi-Fi GUI still works. Re-enable when C6 HCI works. */
