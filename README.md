@@ -179,6 +179,11 @@ The Pi exposes the same JSON commands over a WebSocket (`ws://HOST/ws`). You
 can drive that socket from your own editor and skip the ToneRelay GUI. See
 [docs/integrators.md](docs/integrators.md).
 
+## Use a box with Helrig
+
+[Helrig](https://helrig.com), a separate editor for Helix and HX presets, can reach a pedal through a ToneRelay
+box over Wi-Fi, using the relay-only mode. See [docs/helrig.md](docs/helrig.md).
+
 ## Acknowledgements
 
 ToneRelay stands on work that other people published first. Thank you.
