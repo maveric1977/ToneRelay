@@ -65,6 +65,8 @@ static unsigned s_rx_drops;
 static unsigned s_in_ok;
 static unsigned s_tx_ok;
 static unsigned s_in_logs;
+static char s_cached_product[48];
+static char s_cached_serial[48];
 /* Transfers submitted whose callback has not run yet, counted per transfer (IN and OUT alike, so a late completion can only account
  * for itself). Closing waits for both counts to reach zero before it releases the interface, closes the device and frees the transfers:
  * freeing a transfer the host library still has in flight asserts in hcd_urb_dequeue (hcd_dwc.c) when its completion is delivered,
@@ -91,6 +93,30 @@ static void set_err(const char *msg)
     s_last_err[sizeof(s_last_err) - 1] = 0;
 }
 
+static void cache_strings(usb_device_handle_t dev)
+{
+    s_cached_product[0] = 0;
+    s_cached_serial[0] = 0;
+    usb_device_info_t info;
+    if (usb_host_device_info(dev, &info) != ESP_OK) {
+        return;
+    }
+    const usb_str_desc_t *strs[2] = {info.str_desc_product, info.str_desc_serial_num};
+    char *outs[2] = {s_cached_product, s_cached_serial};
+    for (int k = 0; k < 2; k++) {
+        const usb_str_desc_t *d = strs[k];
+        size_t n = 0;
+        if (d && d->bLength >= 2) {
+            size_t chars = (size_t)(d->bLength - 2) / 2;
+            for (size_t i = 0; i < chars && n + 1 < 48; i++) {
+                uint16_t c = d->wData[i];
+                outs[k][n++] = (c >= 0x20 && c < 0x7f) ? (char)c : '?';
+            }
+        }
+        outs[k][n] = 0;
+    }
+}
+
 static void note_hx(usb_device_handle_t dev, uint8_t addr)
 {
     const usb_device_desc_t *desc = NULL;
@@ -107,6 +133,7 @@ static void note_hx(usb_device_handle_t dev, uint8_t addr)
     s_pid = desc->idProduct;
     s_present = true;
     s_enum_gen++;
+    cache_strings(dev);
     ESP_LOGI(TAG, "HX device pid=%04x addr=%u gen=%u", s_pid, s_addr, (unsigned)s_enum_gen);
     usb_host_device_close(s_client, dev);
 }
@@ -692,6 +719,42 @@ int helix_usb_recv(uint8_t *buf, size_t buf_len, size_t *out_len, uint32_t timeo
     *out_len = n;
     flush_parked();
     return 0;
+}
+
+static void utf16_to_ascii(const usb_str_desc_t *d, char *out, size_t cap)
+{
+    size_t n = 0;
+    if (d && d->bLength >= 2) {
+        size_t chars = (size_t)(d->bLength - 2) / 2;
+        for (size_t i = 0; i < chars && n + 1 < cap; i++) {
+            uint16_t c = d->wData[i];
+            out[n++] = (c >= 0x20 && c < 0x7f) ? (char)c : '?';
+        }
+    }
+    out[n] = 0;
+}
+
+int helix_usb_strings(char *product, size_t plen, char *serial, size_t slen)
+{
+    xSemaphoreTake(s_lock, portMAX_DELAY);
+    if (!s_open || !s_dev) {
+        xSemaphoreGive(s_lock);
+        return -2;
+    }
+    usb_device_info_t info;
+    esp_err_t err = usb_host_device_info(s_dev, &info);
+    if (err == ESP_OK) {
+        utf16_to_ascii(info.str_desc_product, product, plen);
+        utf16_to_ascii(info.str_desc_serial_num, serial, slen);
+    }
+    xSemaphoreGive(s_lock);
+    return err == ESP_OK ? 0 : -3;
+}
+
+void helix_usb_cached_strings(char *product, size_t plen, char *serial, size_t slen)
+{
+    snprintf(product, plen, "%s", s_cached_product);
+    snprintf(serial, slen, "%s", s_cached_serial);
 }
 
 bool helix_usb_present(void)

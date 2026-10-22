@@ -36,6 +36,10 @@ void helix_usb_stats(
     uint32_t *queued
 );
 const char *helix_usb_last_error(void);
+/* The product and serial strings read when the pedal enumerated (valid without a session). */
+void helix_usb_cached_strings(char *product, size_t plen, char *serial, size_t slen);
+/* Product and serial string descriptors of the open pedal (ASCII, '?' for other characters). 0 on success. */
+int helix_usb_strings(char *product, size_t plen, char *serial, size_t slen);
 
 void tonerelay_wifi_start(void);
 void tonerelay_c6_sync(void);
