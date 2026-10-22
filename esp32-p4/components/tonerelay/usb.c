@@ -5,6 +5,7 @@
 
 #include "esp_bit_defs.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/semphr.h"
@@ -46,6 +47,7 @@ static uint32_t s_enum_gen;
 static bool s_open;
 static bool s_closing;
 static bool s_ignore_gone;
+static int64_t s_close_us; /* when helix_usb_close() last finished: a GONE event right after it is ours */
 static usb_transfer_t *s_in[IN_URBS];
 static usb_transfer_t *s_out;
 static QueueHandle_t s_rx;
@@ -255,7 +257,9 @@ static void client_event(const usb_host_client_event_msg_t *msg, void *arg)
         }
         note_hx(dev, msg->new_dev.address);
     } else if (msg->event == USB_HOST_CLIENT_EVENT_DEV_GONE) {
-        if (s_closing || s_ignore_gone) {
+        /* Ignore the event our own close can raise, but only for a moment: an unplug long after a session
+         * closed is real (the flag used to stay set until the next open, so an idle unplug left `present` stale). */
+        if (s_closing || (s_ignore_gone && (esp_timer_get_time() - s_close_us) < 2000000)) {
             ESP_LOGI(TAG, "HX gone ignored (local close)");
             return;
         }
@@ -586,6 +590,7 @@ int helix_usb_close(void)
         xQueueReset(s_rx);
     }
     ESP_LOGI(TAG, "interface released parked_peak=%u drops=%u", s_parked_peak, s_rx_drops);
+    s_close_us = esp_timer_get_time();
     s_closing = false;
     xSemaphoreGive(s_lock);
     return 0;
