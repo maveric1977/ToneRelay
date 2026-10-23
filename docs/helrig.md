@@ -46,6 +46,13 @@ that starts the chip's download mode.)
 **Handing a box over.** After the application is flashed, `esp32-p4/scripts/provision.sh --mode helrig -p <port>` writes the box's
 saved settings, so it starts as a blank Helrig Box. `--mode tonerelay` gives a plain ToneRelay box. See the script's header.
 
+## The setup page's look
+
+The page uses Helrig's colours and its typeface, Oxanium (Latin, weights 400 and 800, embedded in the page under the SIL Open Font License 1.1, so
+the page needs no internet). The Helrig wordmark is **not stored in this repository or on the box**: the page asks helrig.com for it and shows a
+text placeholder ("HELRIG") when it cannot be reached, which is always the case while a phone is on the box's own setup network. The wordmark and the
+placeholder both link to https://helrig.com. "Helrig" and its wordmark belong to Helrig's author and are not covered by this repository's licence.
+
 ## The Helrig mode
 
 A box can take on the names a Helrig user expects, so nobody has to learn a second product name. It is a saved setting, off by default
