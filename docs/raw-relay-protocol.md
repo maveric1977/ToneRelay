@@ -79,6 +79,13 @@ Two boxes in `helrig` mode on one network both ask for `helrigbox.local`. The in
 client that discovers by service should use the address in the record and not the host name. [Not tested: only one box was
 available.]
 
+In the `helrig` mode the setup network exists only while the box has no Wi-Fi of its own to use: a box with a saved network starts as a
+station only and raises the setup network if that network is not joined within 40 s; 45 s after the box gets an address the
+setup network goes off; if the Wi-Fi is lost for 40 s it comes back. The `tonerelay` mode keeps its setup network up as before. In
+the `helrig` mode `GET /` is the box's own setup and status page (it uses the `wifi_scan`, `wifi_join` and `wifi_status`
+operations of `/api/cmd`) and not the ToneRelay editor. Holding the BOOT button for 5 s forgets the Wi-Fi network and the hotspot
+password in either mode and restarts the box; the mode is kept.
+
 The mode is read and set with `GET` / `POST /api/relay` (section 8). The BLE name stays `ToneRelay` in every mode.
 
 ## 4. Messages
