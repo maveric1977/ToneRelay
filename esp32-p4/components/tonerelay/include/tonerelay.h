@@ -50,6 +50,7 @@ typedef struct {
     const char *service;   /* mDNS service type, such as "_tonerelay" */
     const char *ap_prefix; /* Wi-Fi setup network name (the box id is added when with_id) */
     bool with_id;
+    bool setup_ap_only;    /* the setup network is up only while the box has no Wi-Fi of its own to use */
 } tonerelay_mode_t;
 const tonerelay_mode_t *tonerelay_mode(void);
 int tonerelay_mode_set(const char *name); /* 0 saved, -1 unknown mode, -2 could not save */
@@ -61,6 +62,7 @@ void tonerelay_mode_instance(char *out, size_t cap);
 #define TONERELAY_RELAY_PROTO 0
 
 void tonerelay_wifi_start(void);
+int tonerelay_wifi_factory_reset(void); /* forget the Wi-Fi network and the hotspot password; the mode stays */
 void tonerelay_c6_sync(void);
 int tonerelay_wifi_scan_json(char *buf, size_t len);
 int tonerelay_wifi_join(const char *ssid, const char *pass);

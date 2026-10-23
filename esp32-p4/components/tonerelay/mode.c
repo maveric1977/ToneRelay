@@ -18,9 +18,9 @@
 #define NVS_KEY "mode"
 
 static const tonerelay_mode_t MODES[] = {
-    /* name        host         instance       service       AP prefix     id in names */
-    {"tonerelay", "tonerelay", "ToneRelay", "_tonerelay", "ToneRelay", false},
-    {"helrig", "helrigbox", "Helrig Box", "_helrigbox", "HelrigBox", true},
+    /* name        host         instance       service       AP prefix     id    setup network only while needed */
+    {"tonerelay", "tonerelay", "ToneRelay", "_tonerelay", "ToneRelay", false, false},
+    {"helrig", "helrigbox", "Helrig Box", "_helrigbox", "HelrigBox", true, true},
 };
 #define N_MODES (sizeof(MODES) / sizeof(MODES[0]))
 
