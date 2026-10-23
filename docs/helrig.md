@@ -34,7 +34,8 @@ A box that is set up as a Helrig Box (see below) starts like this:
 4. Open Helrig on your computer, plug your pedal into the box, and choose the box in the device menu. Helrig finds it by itself
    (`_helrigbox._tcp`); you do not type an address.
 
-About a minute after it has joined your network the box switches its own network off. If its Wi-Fi is lost for 40 seconds, for
+45 seconds after it has joined your network the box switches its own network off [measured on the box's serial log: 45.0 s]. Phones and
+computers may keep listing the name for a few minutes after it has gone; that is their cached list, not the box. If its Wi-Fi is lost for 40 seconds, for
 example after a new router, the network comes back and you repeat steps 2 and 3. While the box is on your network the same page is
 at the box's address and offers another network.
 

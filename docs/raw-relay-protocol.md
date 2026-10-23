@@ -81,7 +81,7 @@ available.]
 
 In the `helrig` mode the setup network exists only while the box has no Wi-Fi of its own to use: a box with a saved network starts as a
 station only and raises the setup network if that network is not joined within 40 s; 45 s after the box gets an address the
-setup network goes off; if the Wi-Fi is lost for 40 s it comes back. The `tonerelay` mode keeps its setup network up as before. In
+setup network goes off; if the Wi-Fi is lost for 40 s it comes back. The `tonerelay` mode keeps its setup network up as before. [Measured on the box's serial log: the setup network went off 45.0 s after the box got an address, and the BOOT hold ran the reset after 5.0 s; a phone kept listing the network name for 3 to 5 minutes after it had gone. The 40 s fallback has not been exercised.] In
 the `helrig` mode `GET /` is the box's own setup and status page (it uses the `wifi_scan`, `wifi_join` and `wifi_status`
 operations of `/api/cmd`) and not the ToneRelay editor. Holding the BOOT button for 5 s forgets the Wi-Fi network and the hotspot
 password in either mode and restarts the box; the mode is kept.
