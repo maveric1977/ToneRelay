@@ -23,6 +23,20 @@ Helrig desktop app  ──  ws://BOX/raw  ──  ToneRelay box (relay only)  �
 The app finds a box from its address, reads `GET /api/relay` (this does not open the pedal), and lists the box as
 a device when relay-only mode is on and a pedal is ready. It then connects through `/raw` like a USB connection.
 
+## The Helrig mode
+
+A box can take on the names a Helrig user expects, so nobody has to learn a second product name. It is a saved setting, off by default
+(the box keeps the ToneRelay names). Set it once, with the pedal not in use:
+
+```bash
+curl -X POST http://<box>/api/relay -H 'Content-Type: application/json' -d '{"mode":"helrig"}'
+```
+
+The box restarts. It then announces itself as `helrigbox.local` and "Helrig Box <id>", and its Wi-Fi setup network is
+`HelrigBox-<id>` (`<id>` is six hex digits that stay the same for that box). The mode also turns relay-only on. The ports,
+the `/raw` protocol and the `_tonerelay._tcp` service are unchanged, so any other client of the relay still finds the box.
+To go back, post `{"mode":"tonerelay"}`. Details are in section 3b of [raw-relay-protocol.md](raw-relay-protocol.md).
+
 ## What you need
 
 - A ToneRelay box on the ESP32-P4 running a firmware with relay mode, with the pedal plugged into the box.

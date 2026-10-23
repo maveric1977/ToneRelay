@@ -56,6 +56,31 @@ header (a page the box served itself). Any other `Origin` gets `{"t":"error","co
 This does not stop DNS rebinding (the rebound name appears in both headers), a non-browser client that sets
 `Origin` on purpose, or anything else on the LAN; it is not authentication.
 
+### 3b. Modes and names
+
+The box has a saved `mode` that decides the names it announces. It is read at boot, so changing it restarts the box.
+
+| Mode | Wi-Fi setup network | mDNS host name | mDNS instance | mDNS services |
+|---|---|---|---|---|
+| `tonerelay` (default) | `ToneRelay` | `tonerelay.local` | `ToneRelay` | `_http._tcp`, `_tonerelay._tcp` |
+| `helrig` | `HelrigBox-<id>` | `helrigbox.local` | `Helrig Box <id>` | `_http._tcp`, `_tonerelay._tcp`, `_helrigbox._tcp` |
+
+`<id>` is the last three bytes of the chip's base MAC, in hex, the same value as the `id` TXT key. The `helrig` mode also turns
+relay-only on. Nothing else depends on the mode: the contract, the port (80) and the `/raw` protocol are the same in both, and
+`_tonerelay._tcp` is advertised in every mode so a client that follows this contract can always find the box. The TXT keys on
+the service records are `proto`, `path` (`/raw`), `id` and `mode`.
+
+After a mode change other devices may keep listing the old names (mDNS lists and Wi-Fi scan lists are cached) for up to about an
+hour. The old names no longer answer, so a client cannot be misdirected by them, and the lists clear by themselves. [Measured on
+one Mac: the old Wi-Fi network name disappeared from its list within a few minutes, and the old mDNS instance stayed listed
+80 s after the change although it no longer resolved.]
+
+Two boxes in `helrig` mode on one network both ask for `helrigbox.local`. The instance names differ (they carry the id), so a
+client that discovers by service should use the address in the record and not the host name. [Not tested: only one box was
+available.]
+
+The mode is read and set with `GET` / `POST /api/relay` (section 8). The BLE name stays `ToneRelay` in every mode.
+
 ## 4. Messages
 
 Binary frames carry USB transfers. Text frames carry JSON control messages.
@@ -123,14 +148,18 @@ the pedal's session close (it knows nothing of the pedal's protocol).
 `GET /api/relay` returns, without opening the pedal:
 
 ```json
-{"ok":true,"relay_only":true,"client":false,"proto":0,
+{"ok":true,"relay_only":true,"client":false,"proto":0,"mode":"tonerelay","restart":false,
  "pedal":{"present":true,"pid":"0x424a","vid":"0x0e41","product":"HELIX   ","serial":"   0000123"},
  "reset_reason":1,"prev_crumbs":[]}
 ```
 
-`client` is true while a client holds the pedal. `reset_reason` is `esp_reset_reason()` and `prev_crumbs` are lifecycle
+`client` is true while a client holds the pedal. `mode` is the running mode (section 3b); `restart` is true in the reply to a request
+that changed it. `reset_reason` is `esp_reset_reason()` and `prev_crumbs` are lifecycle
 markers kept across a reset (diagnostics; they helped find a crash in this very code). `POST /api/relay` with
 `{"on":true}` or `{"on":false}` changes the setting and returns the same JSON; turning it off disconnects a connected client.
+`{"mode":"helrig"}` or `{"mode":"tonerelay"}` saves the mode and restarts the box about 0.8 s after the reply, which says
+`"restart":true`; an unknown mode gets `400 {"ok":false,"error":"unknown_mode"}`, and a request while a client holds the pedal gets
+`409 {"ok":false,"error":"busy"}` because a restart would drop a session the pedal still believes in. The busy check comes first, so while a client holds the pedal even an unknown mode gets `409`.
 
 ## 9. Versioning
 
