@@ -48,10 +48,13 @@ saved settings, so it starts as a blank Helrig Box. `--mode tonerelay` gives a p
 
 ## The setup page's look
 
-The page uses Helrig's colours and its typeface, Oxanium (Latin, weights 400 and 800, embedded in the page under the SIL Open Font License 1.1, so
-the page needs no internet). The Helrig wordmark is **not stored in this repository or on the box**: the page asks helrig.com for it and shows a
-text placeholder ("HELRIG") when it cannot be reached, which is always the case while a phone is on the box's own setup network. The wordmark and the
-placeholder both link to https://helrig.com. "Helrig" and its wordmark belong to Helrig's author and are not covered by this repository's licence.
+The page uses Helrig's colours (ground `#0a0a0a`, text `#f2efe9`, and signal yellow `#FFD23F`, the Helrig Box colour, for actions and focus) and
+the system font. The logo is **inline vector paths** in the page (the Helrig symbol with the Helrig Box badge, then HELRIG and BOX), so the page needs no
+font, no image and no internet and looks the same on the box's own setup network and on a home network; the logo links to https://helrig.com. The whole
+page is about 9 KB.
+
+The logo is Helrig's artwork and is **not covered by this repository's MIT licence**; it is included for the Helrig Box page. Anyone building their own
+box should replace it.
 
 ## The Helrig mode
 
