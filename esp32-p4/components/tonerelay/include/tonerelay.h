@@ -63,6 +63,7 @@ void tonerelay_mode_instance(char *out, size_t cap);
 
 void tonerelay_wifi_start(void);
 int tonerelay_wifi_factory_reset(void); /* forget the Wi-Fi network and the hotspot password; the mode stays */
+void tonerelay_reset_button_start(void); /* hold BOOT for 5 s to run the factory reset */
 void tonerelay_c6_sync(void);
 int tonerelay_wifi_scan_json(char *buf, size_t len);
 int tonerelay_wifi_join(const char *ssid, const char *pass);
