@@ -278,6 +278,12 @@ void tonerelay_wifi_start(void)
     memset(pass, 0, sizeof(pass));
     start_ap();
     ESP_ERROR_CHECK(esp_wifi_start());
+    /* The default (modem sleep) puts the radio to sleep between beacons: replies after an idle gap come late, and group
+     * (multicast) frames, such as an mDNS question to everyone, can be missed. The box has mains power. */
+    esp_err_t ps = esp_wifi_set_ps(WIFI_PS_NONE);
+    if (ps != ESP_OK) {
+        ESP_LOGW(TAG, "could not turn Wi-Fi power-save off: %s", esp_err_to_name(ps));
+    }
     start_mdns();
 }
 

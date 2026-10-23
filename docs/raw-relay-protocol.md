@@ -168,9 +168,16 @@ markers kept across a reset (diagnostics; they helped find a crash in this very 
 
 ## 10. Latency (informational)
 
-On the bench the WebSocket round trip to the box (text ping) was about 10 to 30 ms under back-to-back requests and 75 to
-140 ms median when requests were spaced 50 ms to 1 s apart, with multi-second outliers [measured; Wi-Fi power-save is
-suspected, not confirmed]. A client that makes many small request/response exchanges will feel it.
+With Wi-Fi power-save left at the ESP-IDF default (modem sleep), the WebSocket round trip to the box (text ping) was about 10 to 30 ms
+under back-to-back requests and 75 to 140 ms median when requests were spaced 50 ms to 1 s apart, with multi-second outliers [measured].
+The box now turns power-save off at boot (`esp_wifi_set_ps(WIFI_PS_NONE)`; it has mains power). With that, HTTP replies to `GET /api/relay`
+from a Mac after a 5 s idle gap had a median of about 38 ms and a worst of 69 ms over 12 samples, against about 103 ms and 362 ms before;
+back-to-back replies did not change (median about 25 ms) [measured, one box, one Mac]. A client that makes many small request/response
+exchanges will still feel the delay of a poor Wi-Fi link.
+
+The same setting decides whether the box hears mDNS questions sent to everyone: with power-save on it answered only questions sent
+straight to its address, so a client that had not seen it announce itself (a new computer, a phone, `mdns-sd`) found nothing; with it
+off, `mdns-sd` found the box in every run [measured].
 
 ## 11. Open points
 
