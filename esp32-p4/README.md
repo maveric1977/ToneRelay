@@ -57,3 +57,11 @@ The peripheral name is **ToneRelay**, with the same service/characteristic UUIDs
 ## Custom PCB
 
 A KiCad handoff for a battery-powered board that keeps this firmware's SDIO/USB pin map is in [docs/hardware/README.md](../docs/hardware/README.md).
+
+## Handing a box over: `scripts/provision.sh`
+
+`scripts/provision.sh --mode helrig -p /dev/ttyACM0` writes the box's saved settings in one step (its NVS partition), so it starts
+as a new Helrig Box: the Helrig names, relay-only on, and no saved Wi-Fi network or hotspot password. `--mode tonerelay` does the same
+for a plain ToneRelay box, and `--dry-run` shows what would be written without touching the board. Flash the application first, then
+run it. It needs ESP-IDF's tools (`IDF_PATH`) and `espflash`. The modes are described in
+[docs/raw-relay-protocol.md](../docs/raw-relay-protocol.md), section 3b.
