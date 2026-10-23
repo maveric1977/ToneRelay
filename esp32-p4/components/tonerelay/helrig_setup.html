@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Helrig Box</title>
+<style>
+  :root { color-scheme: dark; }
+  body { font: 16px/1.45 system-ui, sans-serif; background: #0b0a10; color: #f2efe9; margin: 0; }
+  main { max-width: 26rem; margin: 0 auto; padding: 1.5rem 1rem 3rem; }
+  h1 { font-size: 1.4rem; margin: 0 0 .25rem; }
+  h1 span { color: #b28cff; font-weight: 400; font-size: 1rem; }
+  p { margin: .75rem 0; }
+  .muted { color: #a9a4b4; font-size: .9rem; }
+  select, input, button { font: inherit; width: 100%; min-height: 44px; box-sizing: border-box; margin: .35rem 0; border-radius: .5rem; }
+  select, input { background: #16141e; color: inherit; border: 1px solid #3a3648; padding: 0 .75rem; }
+  button { background: #b28cff; color: #0b0a10; border: 0; font-weight: 700; cursor: pointer; }
+  button.quiet { background: transparent; color: #b28cff; border: 1px solid #3a3648; font-weight: 400; }
+  button:disabled { opacity: .5; cursor: default; }
+  code { background: #16141e; padding: .1rem .35rem; border-radius: .25rem; }
+  [hidden] { display: none; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Helrig Box <span id="id"></span></h1>
+
+  <section id="setup" hidden>
+    <p>Choose your Wi-Fi network. The box can only use 2.4&nbsp;GHz networks.</p>
+    <select id="net" aria-label="Wi-Fi network"></select>
+    <input id="pass" type="password" placeholder="Wi-Fi password" autocomplete="off" autocapitalize="off" spellcheck="false">
+    <button id="join">Connect</button>
+    <button id="scan" class="quiet">Look for networks again</button>
+    <p id="msg" class="muted" role="status"></p>
+  </section>
+
+  <section id="done" hidden>
+    <p>Your Helrig Box is on <b id="ssid"></b>.</p>
+    <p>Open Helrig on your computer. It finds the box by itself. Then plug your pedal into the box.</p>
+    <p class="muted">Its address on your network: <code id="ip"></code></p>
+    <p class="muted">If this page is open on your phone, you can switch it back to your usual Wi-Fi now. The box's own network switches off a minute after it is connected.</p>
+    <button id="change" class="quiet">Use another network</button>
+  </section>
+</main>
+<script>
+const $ = (id) => document.getElementById(id)
+const api = (body) =>
+  fetch('/api/cmd', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then((r) => r.json())
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+function show(which) {
+  $('setup').hidden = which !== 'setup'
+  $('done').hidden = which !== 'done'
+}
+
+async function scan() {
+  $('scan').disabled = true
+  $('msg').textContent = 'Looking for networks...'
+  try {
+    const j = await api({ op: 'wifi_scan' })
+    const seen = new Set()
+    const list = (j.aps || []).filter((a) => a.ssid && !seen.has(a.ssid) && seen.add(a.ssid))
+    $('net').replaceChildren(
+      ...list.map((a) => {
+        const o = document.createElement('option')
+        o.value = a.ssid
+        o.textContent = a.ssid + (a.auth === 'open' ? ' (open)' : '')
+        return o
+      }),
+    )
+    $('msg').textContent = list.length ? '' : 'No 2.4 GHz networks found. Move the box closer to your router and look again.'
+  } catch (e) {
+    $('msg').textContent = 'The box did not answer. Try again.'
+  }
+  $('scan').disabled = false
+}
+
+async function status() {
+  const j = await api({ op: 'wifi_status' })
+  if (j.ap) $('id').textContent = String(j.ap).split('-').pop()
+  return j
+}
+
+async function join() {
+  const ssid = $('net').value
+  if (!ssid) return
+  $('join').disabled = true
+  $('msg').textContent = 'Connecting...'
+  const r = await api({ op: 'wifi_join', ssid, password: $('pass').value })
+  if (!r.ok) {
+    $('msg').textContent = 'The box could not use that network.'
+    $('join').disabled = false
+    return
+  }
+  for (let i = 0; i < 30; i++) {
+    await wait(1500)
+    let j
+    try {
+      j = await status()
+    } catch (e) {
+      continue
+    }
+    if (j.sta) {
+      $('ssid').textContent = j.ssid
+      $('ip').textContent = j.ip
+      show('done')
+      $('join').disabled = false
+      return
+    }
+  }
+  $('msg').textContent = 'The box could not connect. Check the password and try again.'
+  $('join').disabled = false
+}
+
+$('join').onclick = () => void join()
+$('scan').onclick = () => void scan()
+$('change').onclick = () => {
+  show('setup')
+  void scan()
+}
+
+status()
+  .then((j) => {
+    if (j.sta) {
+      $('ssid').textContent = j.ssid
+      $('ip').textContent = j.ip
+      show('done')
+    } else {
+      show('setup')
+      void scan()
+    }
+  })
+  .catch(() => {
+    show('setup')
+    $('msg').textContent = 'The box did not answer. Reload this page.'
+  })
+</script>
+</body>
+</html>

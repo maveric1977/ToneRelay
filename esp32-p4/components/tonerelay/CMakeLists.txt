@@ -36,6 +36,7 @@ idf_component_register(
         "catalog.c"
         "www_embed.c"
     INCLUDE_DIRS "include"
+    EMBED_TXTFILES "helrig_setup.html"
     PRIV_REQUIRES
         usb
         nvs_flash

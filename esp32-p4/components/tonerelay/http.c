@@ -284,8 +284,26 @@ static esp_err_t api_catalog_commit(httpd_req_t *req)
     return err;
 }
 
+/* The setup and status page a Helrig Box shows (helrig_setup.html, embedded at build time). */
+extern const char helrig_page_start[] asm("_binary_helrig_setup_html_start");
+extern const char helrig_page_end[] asm("_binary_helrig_setup_html_end");
+
 static esp_err_t static_get(httpd_req_t *req)
 {
+    /* In the Helrig mode the front page is the Helrig Box page: no ToneRelay editor, no catalog step. */
+    if ((strcmp(req->uri, "/") == 0 || strcmp(req->uri, "/index.html") == 0) &&
+        strcmp(tonerelay_mode()->name, "helrig") == 0) {
+        size_t len = (size_t)(helrig_page_end - helrig_page_start);
+        if (len > 0 && helrig_page_start[len - 1] == 0) {
+            len--; /* EMBED_TXTFILES adds a terminating zero */
+        }
+        httpd_resp_set_type(req, "text/html; charset=utf-8");
+        httpd_resp_set_hdr(req, "Cache-Control", "no-store");
+        if (req->method == HTTP_HEAD) {
+            return httpd_resp_send(req, NULL, (ssize_t)len);
+        }
+        return httpd_resp_send(req, helrig_page_start, (ssize_t)len);
+    }
     const www_file_t *f = find_www(req->uri);
     if (f) {
         httpd_resp_set_type(req, mime_for(f->path));
