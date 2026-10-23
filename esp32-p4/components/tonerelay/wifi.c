@@ -10,6 +10,7 @@
 #include "esp_wifi.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "esp_mac.h"
 #include "mdns.h"
 #include "nvs.h"
 #include "nvs_flash.h"
@@ -134,6 +135,16 @@ static void start_mdns(void)
     mdns_hostname_set("tonerelay");
     mdns_instance_name_set("ToneRelay");
     mdns_service_add(NULL, "_http", "_tcp", 80, NULL, 0);
+    /* Lets a client find a box by service type. `id` is the last three bytes of the chip's base MAC (the Wi-Fi
+     * radio is on the C6 co-processor, and esp_read_mac(ESP_MAC_WIFI_STA) returned zeros on the P4). */
+    uint8_t mac[6] = {0};
+    esp_efuse_mac_get_default(mac);
+    char id[8];
+    snprintf(id, sizeof(id), "%02x%02x%02x", mac[3], mac[4], mac[5]);
+    char proto[8];
+    snprintf(proto, sizeof(proto), "%d", TONERELAY_RELAY_PROTO);
+    mdns_txt_item_t txt[] = {{"proto", proto}, {"path", "/raw"}, {"id", id}};
+    mdns_service_add(NULL, "_tonerelay", "_tcp", 80, txt, sizeof(txt) / sizeof(txt[0]));
     started = true;
     ESP_LOGI(TAG, "mDNS tonerelay.local");
 }

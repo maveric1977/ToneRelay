@@ -2,7 +2,7 @@
  * Raw relay (prototype): carries USB bulk transfers between one WebSocket client on /raw and the
  * pedal, without interpreting them. See docs/raw-relay-protocol.md (draft v0).
  *
- * Prototype limits, all deliberate: no token, no mDNS record, no stale_session handling, a failed
+ * Prototype limits, all deliberate: no token, no stale_session handling, a failed
  * upgrade is reported with an `error` text frame and a close instead of HTTP 409, and the only way
  * to turn the mode on is POST /api/relay {"on":true}. Turn it on BEFORE attaching the pedal: the
  * box's own session, if open, is dropped without a session close.
@@ -31,7 +31,7 @@
 #define RAW_OUT_MAX 4096
 #define RAW_IN_MAX 4096
 #define IN_MPS 512
-#define PROTO 0
+#define PROTO TONERELAY_RELAY_PROTO
 /* A client that has sent nothing for this long is gone (the engine's own keepalives alone arrive about once a second, so a live
  * client is never this quiet). Wi-Fi loss, a closed laptop or a crashed app leave no goodbye, and without this the box held the
  * pedal for its dead client until TCP gave up. */

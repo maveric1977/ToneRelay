@@ -41,6 +41,9 @@ const char *helix_usb_last_error(void);
 void helix_usb_cached_strings(char *product, size_t plen, char *serial, size_t slen);
 int helix_usb_strings(char *product, size_t plen, char *serial, size_t slen);
 
+/* Version of the raw relay contract (docs/raw-relay-protocol.md): sent in the /raw hello and advertised over mDNS. */
+#define TONERELAY_RELAY_PROTO 0
+
 void tonerelay_wifi_start(void);
 void tonerelay_c6_sync(void);
 int tonerelay_wifi_scan_json(char *buf, size_t len);

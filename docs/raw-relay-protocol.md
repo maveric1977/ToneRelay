@@ -43,7 +43,9 @@ is dropped without a session close.
   second until the first is acknowledged. [The effect on this stack was not measured.]
 - *(planned)* A per-box token, sent as a WebSocket subprotocol `tonerelay.v0.<token>`, for `/raw` and
   ideally `/ws` and `/api/cmd` too. Today nothing here is authenticated; use it on a trusted LAN.
-- *(planned)* mDNS `_tonerelay._tcp` with TXT keys for firmware version, protocol version and box id.
+- mDNS: the box advertises `_tonerelay._tcp` on port 80 next to `_http._tcp`, with TXT keys `proto` (the
+  `proto` of the hello), `path` (`/raw`) and `id` (the last three bytes of the chip's base MAC, in hex). A firmware version key
+  is not defined yet because the firmware has no version string.
 
 ### 3a. Origin
 
@@ -132,8 +134,8 @@ markers kept across a reset (diagnostics; they helped find a crash in this very 
 
 ## 9. Versioning
 
-`proto` in the `hello` is an integer; a client must refuse a major version it does not know. *(planned)* The mDNS TXT key
-carries the same number.
+`proto` in the `hello` is an integer; a client must refuse a major version it does not know. The mDNS TXT key
+`proto` carries the same number.
 
 ## 10. Latency (informational)
 
