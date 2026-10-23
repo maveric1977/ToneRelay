@@ -95,7 +95,7 @@ async function scan() {
 
 async function status() {
   const j = await api({ op: 'wifi_status' })
-  if (j.ap) $('id').textContent = String(j.ap).split('-').pop()
+  if (j.ap) $('id').textContent = String(j.ap).split(/[\s-]+/).pop()
   return j
 }
 

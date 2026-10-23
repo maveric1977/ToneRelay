@@ -20,7 +20,7 @@
 static const tonerelay_mode_t MODES[] = {
     /* name        host         instance       service       AP prefix     id    setup network only while needed */
     {"tonerelay", "tonerelay", "ToneRelay", "_tonerelay", "ToneRelay", false, false},
-    {"helrig", "helrigbox", "Helrig Box", "_helrigbox", "HelrigBox", true, true},
+    {"helrig", "helrigbox", "Helrig Box", "_helrigbox", "Helrig Box", true, true},
 };
 #define N_MODES (sizeof(MODES) / sizeof(MODES[0]))
 
@@ -98,7 +98,7 @@ void tonerelay_mode_ap_ssid(char *out, size_t cap)
     if (m->with_id) {
         char id[8];
         tonerelay_mode_id(id, sizeof(id));
-        snprintf(out, cap, "%s-%s", m->ap_prefix, id);
+        snprintf(out, cap, "%s %s", m->ap_prefix, id);
     } else {
         snprintf(out, cap, "%s", m->ap_prefix);
     }

@@ -63,7 +63,7 @@ The box has a saved `mode` that decides the names it announces. It is read at bo
 | Mode | Wi-Fi setup network | mDNS host name | mDNS instance | mDNS services |
 |---|---|---|---|---|
 | `tonerelay` (default) | `ToneRelay` | `tonerelay.local` | `ToneRelay` | `_http._tcp`, `_tonerelay._tcp` |
-| `helrig` | `HelrigBox-<id>` | `helrigbox.local` | `Helrig Box <id>` | `_http._tcp`, `_tonerelay._tcp`, `_helrigbox._tcp` |
+| `helrig` | `Helrig Box <id>` | `helrigbox.local` | `Helrig Box <id>` | `_http._tcp`, `_tonerelay._tcp`, `_helrigbox._tcp` |
 
 `<id>` is the last three bytes of the chip's base MAC, in hex, the same value as the `id` TXT key. The `helrig` mode also turns
 relay-only on. Nothing else depends on the mode: the contract, the port (80) and the `/raw` protocol are the same in both, and

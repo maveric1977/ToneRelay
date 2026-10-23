@@ -27,7 +27,7 @@ a device when relay-only mode is on and a pedal is ready. It then connects throu
 
 A box that is set up as a Helrig Box (see below) starts like this:
 
-1. Plug the box in. It raises its own Wi-Fi network, **`HelrigBox-<id>`** (six hex digits, the same ones that follow "Helrig Box"
+1. Plug the box in. It raises its own Wi-Fi network, **`Helrig Box <id>`** (six hex digits, the same ones that follow "Helrig Box"
    in the app).
 2. On your phone, join that network and open `http://192.168.4.1`. The page lists the 2.4 GHz networks the box can see.
 3. Pick yours, type the password, and press **Connect**. The page says when the box is on your network and shows its address.
@@ -63,7 +63,7 @@ curl -X POST http://<box>/api/relay -H 'Content-Type: application/json' -d '{"mo
 ```
 
 The box restarts. It then announces itself as `helrigbox.local` and "Helrig Box <id>", and its Wi-Fi setup network is
-`HelrigBox-<id>`. The mode also turns relay-only on, and the box's front page is the setup page above in place of the ToneRelay
+`Helrig Box <id>`. The mode also turns relay-only on, and the box's front page is the setup page above in place of the ToneRelay
 editor. The ports, the `/raw` protocol and the `_tonerelay._tcp` service are unchanged, so any other client of the relay still finds
 the box. To go back, post `{"mode":"tonerelay"}`. Details are in section 3b of [raw-relay-protocol.md](raw-relay-protocol.md).
 
