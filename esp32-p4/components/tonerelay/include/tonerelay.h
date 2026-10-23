@@ -41,6 +41,22 @@ const char *helix_usb_last_error(void);
 void helix_usb_cached_strings(char *product, size_t plen, char *serial, size_t slen);
 int helix_usb_strings(char *product, size_t plen, char *serial, size_t slen);
 
+/* The names the box shows the network (Wi-Fi setup network, host name, mDNS), chosen by a saved mode. `tonerelay` is the
+ * default; `helrig` gives the names a Helrig user expects. Applied at boot, so changing the mode restarts the box. */
+typedef struct {
+    const char *name;      /* "tonerelay" or "helrig" */
+    const char *hostname;  /* mDNS host name, without .local */
+    const char *instance;  /* mDNS instance name (the box id is added when with_id) */
+    const char *service;   /* mDNS service type, such as "_tonerelay" */
+    const char *ap_prefix; /* Wi-Fi setup network name (the box id is added when with_id) */
+    bool with_id;
+} tonerelay_mode_t;
+const tonerelay_mode_t *tonerelay_mode(void);
+int tonerelay_mode_set(const char *name); /* 0 saved, -1 unknown mode, -2 could not save */
+void tonerelay_mode_id(char *out, size_t cap);
+void tonerelay_mode_ap_ssid(char *out, size_t cap);
+void tonerelay_mode_instance(char *out, size_t cap);
+
 /* Version of the raw relay contract (docs/raw-relay-protocol.md): sent in the /raw hello and advertised over mDNS. */
 #define TONERELAY_RELAY_PROTO 0
 

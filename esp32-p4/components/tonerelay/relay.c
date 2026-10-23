@@ -398,12 +398,80 @@ static esp_err_t raw_handler(httpd_req_t *req)
 
 /* -- /api/relay ---------------------------------------------------------------------------- */
 
+/* The string value of "mode" in a small JSON body, without a parser: {"mode":"helrig"}. */
+static bool body_mode(const char *body, char *out, size_t cap)
+{
+    const char *key = strstr(body, "\"mode\"");
+    if (!key) {
+        return false;
+    }
+    const char *open = strchr(key + 6, '"');
+    if (!open) {
+        return false;
+    }
+    const char *close = strchr(open + 1, '"');
+    if (!close || (size_t)(close - open - 1) >= cap) {
+        return false;
+    }
+    memcpy(out, open + 1, (size_t)(close - open - 1));
+    out[close - open - 1] = 0;
+    return true;
+}
+
+static void restart_cb(void *arg)
+{
+    (void)arg;
+    esp_restart();
+}
+
+/* A new mode changes the names the box announces at boot, so the box restarts, a moment after the reply has gone out. */
+static void restart_soon(void)
+{
+    static esp_timer_handle_t t;
+    const esp_timer_create_args_t args = {.callback = restart_cb, .name = "mode_restart"};
+    if (!t && esp_timer_create(&args, &t) != ESP_OK) {
+        return;
+    }
+    esp_timer_start_once(t, 800 * 1000);
+}
+
+static esp_err_t refuse_json(httpd_req_t *req, const char *status, const char *error)
+{
+    char out[64];
+    snprintf(out, sizeof(out), "{\"ok\":false,\"error\":\"%s\"}", error);
+    httpd_resp_set_status(req, status);
+    httpd_resp_set_type(req, "application/json");
+    return httpd_resp_sendstr(req, out);
+}
+
 static esp_err_t relay_api(httpd_req_t *req)
 {
+    bool restart = false;
+    char new_mode[16] = {0};
     if (req->method == HTTP_POST) {
         char body[64] = {0};
         int n = httpd_req_recv(req, body, sizeof(body) - 1);
         if (n > 0) {
+            char want[16];
+            if (body_mode(body, want, sizeof(want)) && strcmp(want, tonerelay_mode()->name) != 0) {
+                /* A restart would drop a session the pedal still believes in. */
+                if (s_active || helix_usb_claimed()) {
+                    return refuse_json(req, "409 Conflict", "busy");
+                }
+                int err = tonerelay_mode_set(want);
+                if (err == -1) {
+                    return refuse_json(req, "400 Bad Request", "unknown_mode");
+                }
+                if (err != 0) {
+                    return refuse_json(req, "500 Internal Server Error", "save_failed");
+                }
+                snprintf(new_mode, sizeof(new_mode), "%s", want);
+                restart = true;
+                if (strcmp(want, "helrig") == 0) {
+                    s_relay_only = true; /* the Helrig mode is the relay */
+                    nvs_save(true);
+                }
+            }
             if (strstr(body, "true")) {
                 s_relay_only = true;
             } else if (strstr(body, "false")) {
@@ -422,10 +490,11 @@ static esp_err_t relay_api(httpd_req_t *req)
     clean(se, sizeof(se), serial);
     char out[640];
     int o = snprintf(out, sizeof(out),
-                     "{\"ok\":true,\"relay_only\":%s,\"client\":%s,\"proto\":%d,"
+                     "{\"ok\":true,\"relay_only\":%s,\"client\":%s,\"proto\":%d,\"mode\":\"%s\",\"restart\":%s,"
                      "\"pedal\":{\"present\":%s,\"pid\":\"0x%04x\",\"vid\":\"0x0e41\",\"product\":\"%s\",\"serial\":\"%s\"},"
                      "\"reset_reason\":%d,\"prev_crumbs\":[",
                      s_relay_only ? "true" : "false", s_active ? "true" : "false", PROTO,
+                     restart ? new_mode : tonerelay_mode()->name, restart ? "true" : "false",
                      helix_usb_present() ? "true" : "false", (unsigned)helix_usb_pid(), pe, se, s_boot_reason);
     uint32_t cnt = s_prev_n < CRUMBS ? s_prev_n : CRUMBS;
     for (uint32_t i = 0; i < cnt && o < (int)sizeof(out) - 16; i++) {
@@ -434,7 +503,11 @@ static esp_err_t relay_api(httpd_req_t *req)
     }
     snprintf(out + o, sizeof(out) - (size_t)o, "]}");
     httpd_resp_set_type(req, "application/json");
-    return httpd_resp_sendstr(req, out);
+    esp_err_t sent = httpd_resp_sendstr(req, out);
+    if (restart) {
+        restart_soon();
+    }
+    return sent;
 }
 
 void tonerelay_relay_register(httpd_handle_t srv)

@@ -17,7 +17,6 @@
 
 #define TAG "tr_wifi"
 #define NVS_NS "tonerelay"
-#define AP_SSID "ToneRelay"
 #define AP_PASS_MIN 8
 #define AP_PASS_MAX 63
 #define RETRY_CAP_US (30ULL * 1000000ULL)
@@ -132,28 +131,35 @@ static void start_mdns(void)
         ESP_LOGW(TAG, "mdns_init failed");
         return;
     }
-    mdns_hostname_set("tonerelay");
-    mdns_instance_name_set("ToneRelay");
+    const tonerelay_mode_t *mode = tonerelay_mode();
+    char instance[40];
+    tonerelay_mode_instance(instance, sizeof(instance));
+    mdns_hostname_set(mode->hostname);
+    mdns_instance_name_set(instance);
     mdns_service_add(NULL, "_http", "_tcp", 80, NULL, 0);
-    /* Lets a client find a box by service type. `id` is the last three bytes of the chip's base MAC (the Wi-Fi
-     * radio is on the C6 co-processor, and esp_read_mac(ESP_MAC_WIFI_STA) returned zeros on the P4). */
-    uint8_t mac[6] = {0};
-    esp_efuse_mac_get_default(mac);
+    /* Lets a client find a box by service type. `id` is the last three bytes of the chip's base MAC. */
     char id[8];
-    snprintf(id, sizeof(id), "%02x%02x%02x", mac[3], mac[4], mac[5]);
+    tonerelay_mode_id(id, sizeof(id));
     char proto[8];
     snprintf(proto, sizeof(proto), "%d", TONERELAY_RELAY_PROTO);
-    mdns_txt_item_t txt[] = {{"proto", proto}, {"path", "/raw"}, {"id", id}};
-    mdns_service_add(NULL, "_tonerelay", "_tcp", 80, txt, sizeof(txt) / sizeof(txt[0]));
+    mdns_txt_item_t txt[] = {{"proto", proto}, {"path", "/raw"}, {"id", id}, {"mode", mode->name}};
+    size_t n_txt = sizeof(txt) / sizeof(txt[0]);
+    /* The contract's own service type is always advertised; a mode with names of its own adds its type. */
+    mdns_service_add(NULL, "_tonerelay", "_tcp", 80, txt, n_txt);
+    if (strcmp(mode->service, "_tonerelay") != 0) {
+        mdns_service_add(NULL, mode->service, "_tcp", 80, txt, n_txt);
+    }
     started = true;
-    ESP_LOGI(TAG, "mDNS tonerelay.local");
+    ESP_LOGI(TAG, "mDNS %s.local (%s)", mode->hostname, instance);
 }
 
 static void start_ap(void)
 {
     wifi_config_t ap = {0};
-    strncpy((char *)ap.ap.ssid, AP_SSID, sizeof(ap.ap.ssid));
-    ap.ap.ssid_len = strlen(AP_SSID);
+    char ap_ssid[33];
+    tonerelay_mode_ap_ssid(ap_ssid, sizeof(ap_ssid));
+    strncpy((char *)ap.ap.ssid, ap_ssid, sizeof(ap.ap.ssid));
+    ap.ap.ssid_len = strlen(ap_ssid);
     ap.ap.channel = 6;
     ap.ap.max_connection = 4;
     ap.ap.pmf_cfg.required = false;
@@ -162,11 +168,11 @@ static void start_ap(void)
         ap.ap.authmode = WIFI_AUTH_WPA2_PSK;
         strncpy((char *)ap.ap.password, ap_pass, sizeof(ap.ap.password) - 1);
         s_ap_secured = true;
-        ESP_LOGI(TAG, "SoftAP %s WPA2 at 192.168.4.1", AP_SSID);
+        ESP_LOGI(TAG, "SoftAP %s WPA2 at 192.168.4.1", ap_ssid);
     } else {
         ap.ap.authmode = WIFI_AUTH_OPEN;
         s_ap_secured = false;
-        ESP_LOGI(TAG, "SoftAP %s open at 192.168.4.1", AP_SSID);
+        ESP_LOGI(TAG, "SoftAP %s open at 192.168.4.1", ap_ssid);
     }
     memset(ap_pass, 0, sizeof(ap_pass));
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_APSTA));
@@ -376,13 +382,15 @@ int tonerelay_wifi_status_json(char *buf, size_t len)
     }
     char ssid[65];
     json_escape(ssid, sizeof(ssid), s_sta_ssid);
+    char ap_ssid[33];
+    tonerelay_mode_ap_ssid(ap_ssid, sizeof(ap_ssid));
     return snprintf(
         buf,
         len,
         "{\"ok\":true,\"op\":\"wifi_status\",\"setup_required\":%s,\"sta\":%s,"
         "\"sta_configured\":%s,\"ap_secured\":%s,\"catalog_ready\":%s,"
         "\"ssid\":\"%s\",\"ip\":\"%s\",\"rssi\":%d,\"ap\":\"%s\","
-        "\"ap_ip\":\"192.168.4.1\",\"mdns\":\"tonerelay.local\"}",
+        "\"ap_ip\":\"192.168.4.1\",\"mdns\":\"%s.local\"}",
         tonerelay_wifi_setup_required() ? "true" : "false",
         s_sta_up ? "true" : "false",
         s_sta_configured ? "true" : "false",
@@ -391,7 +399,8 @@ int tonerelay_wifi_status_json(char *buf, size_t len)
         ssid,
         s_sta_ip,
         s_sta_rssi,
-        AP_SSID
+        ap_ssid,
+        tonerelay_mode()->hostname
     );
 }
 

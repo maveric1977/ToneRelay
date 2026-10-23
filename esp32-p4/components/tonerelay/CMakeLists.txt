@@ -29,6 +29,7 @@ idf_component_register(
         "wifi.c"
         "http.c"
         "relay.c"
+        "mode.c"
         "ble.c"
         "tonerelay.c"
         "c6_ota.c"
