@@ -37,13 +37,22 @@ is dropped without a session close.
 - `ws://<host>/raw` on the existing HTTP server (port 80). One client at a time.
 - Refusals arrive as a text message and a close, after the WebSocket upgrade (not as an HTTP status):
   `relay_unavailable` (relay mode is off), `busy` (another client holds the pedal),
-  `box_session_open` (the box's own session already holds the pedal).
+  `box_session_open` (the box's own session already holds the pedal), `origin_not_allowed` (section 3a).
 - The box sets `TCP_NODELAY` and TCP keepalive on the socket (section 6a). Clients should set `TCP_NODELAY`
   too: they send transfers in quick pairs (for example 20 then 28 bytes), and Nagle's algorithm can hold the
   second until the first is acknowledged. [The effect on this stack was not measured.]
 - *(planned)* A per-box token, sent as a WebSocket subprotocol `tonerelay.v0.<token>`, for `/raw` and
   ideally `/ws` and `/api/cmd` too. Today nothing here is authenticated; use it on a trusted LAN.
 - *(planned)* mDNS `_tonerelay._tcp` with TXT keys for firmware version, protocol version and box id.
+
+### 3a. Origin
+
+A browser sends an `Origin` header on every WebSocket upgrade, and a web page can open a WebSocket to any
+address it can reach, so a page open on the same network could otherwise talk to the pedal through the visitor's
+browser. `/raw` accepts an upgrade with no `Origin` (a native client) or with an `Origin` whose authority equals the `Host`
+header (a page the box served itself). Any other `Origin` gets `{"t":"error","code":"origin_not_allowed"}` and a close.
+This does not stop DNS rebinding (the rebound name appears in both headers), a non-browser client that sets
+`Origin` on purpose, or anything else on the LAN; it is not authentication.
 
 ## 4. Messages
 
@@ -65,7 +74,7 @@ bytes [measured]).
 - `{"t":"pedal_detached"}`, then a close, when the pedal leaves the bus. A USB read that fails otherwise sends
   `{"t":"error","code":"usb_error"}` and closes.
 - `{"t":"closing","reason":"client_silent"}`, then a close (section 6a).
-- `{"t":"error","code":...}`: `relay_unavailable`, `busy`, `box_session_open`, `oversize`, `usb_error`.
+- `{"t":"error","code":...}`: `relay_unavailable`, `busy`, `box_session_open`, `origin_not_allowed`, `oversize`, `usb_error`.
 - *(planned)* `pedal_attached` for a pedal that arrives while a client is connected. Reserved codes: `usb_stall`,
   `no_pedal`, `internal`.
 

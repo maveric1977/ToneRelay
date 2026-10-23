@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 
 #include "esp_attr.h"
 #include "esp_http_server.h"
@@ -259,11 +260,36 @@ static esp_err_t refuse(httpd_req_t *req, const char *code)
     return ESP_FAIL; /* httpd closes the socket */
 }
 
+/* A browser sends Origin on every WebSocket upgrade, a native client does not. Accept a request without one, and
+ * one from a page this box served itself (Origin and Host name the same authority). Anything else is a page from
+ * elsewhere trying to drive the pedal through the visitor's browser. DNS rebinding is not covered: the rebound
+ * name shows up in both headers. */
+static bool origin_allowed(httpd_req_t *req)
+{
+    size_t olen = httpd_req_get_hdr_value_len(req, "Origin");
+    if (olen == 0) {
+        return true;
+    }
+    char origin[96], host[64];
+    if (olen >= sizeof(origin) || httpd_req_get_hdr_value_str(req, "Origin", origin, sizeof(origin)) != ESP_OK) {
+        return false;
+    }
+    size_t hlen = httpd_req_get_hdr_value_len(req, "Host");
+    if (hlen == 0 || hlen >= sizeof(host) || httpd_req_get_hdr_value_str(req, "Host", host, sizeof(host)) != ESP_OK) {
+        return false;
+    }
+    const char *authority = strstr(origin, "://");
+    return authority && strcasecmp(authority + 3, host) == 0;
+}
+
 static esp_err_t raw_handler(httpd_req_t *req)
 {
     int fd = httpd_req_to_sockfd(req);
     if (req->method == HTTP_GET) {
         crumb(1);
+        if (!origin_allowed(req)) {
+            return refuse(req, "origin_not_allowed");
+        }
         if (!s_relay_only) {
             return refuse(req, "relay_unavailable");
         }
