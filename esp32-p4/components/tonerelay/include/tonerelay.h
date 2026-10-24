@@ -36,10 +36,34 @@ void helix_usb_stats(
     uint32_t *queued
 );
 const char *helix_usb_last_error(void);
+/* Product and serial string descriptors of the open pedal (ASCII, '?' for other characters). 0 on success. */
 /* The product and serial strings read when the pedal enumerated (valid without a session). */
 void helix_usb_cached_strings(char *product, size_t plen, char *serial, size_t slen);
-/* Product and serial string descriptors of the open pedal (ASCII, '?' for other characters). 0 on success. */
 int helix_usb_strings(char *product, size_t plen, char *serial, size_t slen);
+
+/* A build's identity: the names the box shows the network (Wi-Fi setup network, host name, mDNS), its relay-only default and an optional
+ * front page of its own. It is chosen when the firmware is built (see profiles/README.md): `profiles/tonerelay` is the default, and a
+ * product built on ToneRelay supplies its own folder through TONERELAY_PROFILE_DIR. */
+typedef struct {
+    const char *name;      /* "tonerelay", or the product's name */
+    const char *hostname;  /* mDNS host name, without .local */
+    const char *instance;  /* mDNS instance name (the box id is added when with_id) */
+    const char *service;   /* an extra mDNS service type such as "_myproduct" (the contract's "_tonerelay" is always advertised) */
+    const char *ap_prefix; /* Wi-Fi setup network name (the box id is added when with_id) */
+    bool with_id;
+    bool setup_ap_only;    /* the setup network is up only while the box has no Wi-Fi of its own to use */
+    bool relay_only_default; /* relay-only when nothing has been saved */
+    /* The front page (GET /), or NULL for the stock ToneRelay page. Returns the HTML and sets its length. */
+    const char *(*setup_page)(size_t *len);
+} tonerelay_profile_t;
+extern const tonerelay_profile_t TONERELAY_PROFILE; /* defined by the profile folder's profile.c */
+const tonerelay_profile_t *tonerelay_profile(void);
+void tonerelay_profile_id(char *out, size_t cap);
+void tonerelay_profile_ap_ssid(char *out, size_t cap);
+void tonerelay_profile_instance(char *out, size_t cap);
+
+/* Version of the raw relay contract (docs/raw-relay-protocol.md): sent in the /raw hello and advertised over mDNS. */
+#define TONERELAY_RELAY_PROTO 0
 
 void tonerelay_wifi_start(void);
 void tonerelay_c6_sync(void);
@@ -62,6 +86,10 @@ FILE *tonerelay_catalog_open_put(const char *name);
 int tonerelay_catalog_status_json(char *buf, size_t len);
 
 void tonerelay_http_start(void);
+
+/* Raw relay (docs/raw-relay-protocol.md). While relay-only is on, the box opens no session of its own. */
+void tonerelay_relay_start(void);
+bool tonerelay_relay_only(void);
 void tonerelay_ble_start(void);
 
 #ifdef __cplusplus

@@ -23,17 +23,36 @@ if(NOT CMAKE_BUILD_EARLY_EXPANSION)
     )
 endif()
 
+# The build's profile (profiles/README.md): the default one in this folder, or the one TONERELAY_PROFILE_DIR points at.
+set(_profile_dir "${CMAKE_CURRENT_LIST_DIR}/profiles/tonerelay")
+if(DEFINED ENV{TONERELAY_PROFILE_DIR} AND NOT "$ENV{TONERELAY_PROFILE_DIR}" STREQUAL "")
+    set(_profile_dir "$ENV{TONERELAY_PROFILE_DIR}")
+endif()
+get_filename_component(_profile_dir "${_profile_dir}" ABSOLUTE)
+if(NOT EXISTS "${_profile_dir}/profile.c")
+    message(FATAL_ERROR "tonerelay: no profile.c in ${_profile_dir} (set TONERELAY_PROFILE_DIR to a profile folder)")
+endif()
+message(STATUS "tonerelay: profile ${_profile_dir}")
+set(_profile_embed "")
+if(EXISTS "${_profile_dir}/setup.html")
+    set(_profile_embed "${_profile_dir}/setup.html")
+endif()
+
 idf_component_register(
     SRCS
+        "${_profile_dir}/profile.c"
         "usb.c"
         "wifi.c"
         "http.c"
+        "relay.c"
+        "profile.c"
         "ble.c"
         "tonerelay.c"
         "c6_ota.c"
         "catalog.c"
         "www_embed.c"
     INCLUDE_DIRS "include"
+    EMBED_TXTFILES ${_profile_embed}
     PRIV_REQUIRES
         usb
         nvs_flash
@@ -41,6 +60,7 @@ idf_component_register(
         esp_netif
         esp_event
         esp_http_server
+        lwip
         esp_timer
         mdns
         bt

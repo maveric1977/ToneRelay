@@ -10,13 +10,13 @@
 #include "esp_wifi.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "esp_mac.h"
 #include "mdns.h"
 #include "nvs.h"
 #include "nvs_flash.h"
 
 #define TAG "tr_wifi"
 #define NVS_NS "tonerelay"
-#define AP_SSID "ToneRelay"
 #define AP_PASS_MIN 8
 #define AP_PASS_MAX 63
 #define RETRY_CAP_US (30ULL * 1000000ULL)
@@ -29,6 +29,12 @@ static char s_sta_ssid[33];
 static int s_sta_rssi;
 static int s_retry;
 static esp_timer_handle_t s_sta_retry_timer;
+static esp_timer_handle_t s_ap_timer;
+static bool s_ap_on;
+/* For a profile whose setup network is only for setup (setup_ap_only): how long after the box has joined a network the setup
+ * network goes off (time for the setup page to say so), and how long a box without Wi-Fi waits before it comes back. */
+#define AP_OFF_DELAY_US (45ULL * 1000000ULL)
+#define AP_BACK_DELAY_US (40ULL * 1000000ULL)
 
 static void json_escape(char *dst, size_t dst_len, const char *src)
 {
@@ -131,18 +137,35 @@ static void start_mdns(void)
         ESP_LOGW(TAG, "mdns_init failed");
         return;
     }
-    mdns_hostname_set("tonerelay");
-    mdns_instance_name_set("ToneRelay");
+    const tonerelay_profile_t *profile = tonerelay_profile();
+    char instance[40];
+    tonerelay_profile_instance(instance, sizeof(instance));
+    mdns_hostname_set(profile->hostname);
+    mdns_instance_name_set(instance);
     mdns_service_add(NULL, "_http", "_tcp", 80, NULL, 0);
+    /* Lets a client find a box by service type. `id` is the last three bytes of the chip's base MAC. */
+    char id[8];
+    tonerelay_profile_id(id, sizeof(id));
+    char proto[8];
+    snprintf(proto, sizeof(proto), "%d", TONERELAY_RELAY_PROTO);
+    mdns_txt_item_t txt[] = {{"proto", proto}, {"path", "/raw"}, {"id", id}, {"profile", profile->name}};
+    size_t n_txt = sizeof(txt) / sizeof(txt[0]);
+    /* The contract's own service type is always advertised; a profile with names of its own adds its type. */
+    mdns_service_add(NULL, "_tonerelay", "_tcp", 80, txt, n_txt);
+    if (strcmp(profile->service, "_tonerelay") != 0) {
+        mdns_service_add(NULL, profile->service, "_tcp", 80, txt, n_txt);
+    }
     started = true;
-    ESP_LOGI(TAG, "mDNS tonerelay.local");
+    ESP_LOGI(TAG, "mDNS %s.local (%s)", profile->hostname, instance);
 }
 
 static void start_ap(void)
 {
     wifi_config_t ap = {0};
-    strncpy((char *)ap.ap.ssid, AP_SSID, sizeof(ap.ap.ssid));
-    ap.ap.ssid_len = strlen(AP_SSID);
+    char ap_ssid[33];
+    tonerelay_profile_ap_ssid(ap_ssid, sizeof(ap_ssid));
+    strncpy((char *)ap.ap.ssid, ap_ssid, sizeof(ap.ap.ssid));
+    ap.ap.ssid_len = strlen(ap_ssid);
     ap.ap.channel = 6;
     ap.ap.max_connection = 4;
     ap.ap.pmf_cfg.required = false;
@@ -151,15 +174,42 @@ static void start_ap(void)
         ap.ap.authmode = WIFI_AUTH_WPA2_PSK;
         strncpy((char *)ap.ap.password, ap_pass, sizeof(ap.ap.password) - 1);
         s_ap_secured = true;
-        ESP_LOGI(TAG, "SoftAP %s WPA2 at 192.168.4.1", AP_SSID);
+        ESP_LOGI(TAG, "SoftAP %s WPA2 at 192.168.4.1", ap_ssid);
     } else {
         ap.ap.authmode = WIFI_AUTH_OPEN;
         s_ap_secured = false;
-        ESP_LOGI(TAG, "SoftAP %s open at 192.168.4.1", AP_SSID);
+        ESP_LOGI(TAG, "SoftAP %s open at 192.168.4.1", ap_ssid);
     }
     memset(ap_pass, 0, sizeof(ap_pass));
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_APSTA));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &ap));
+    s_ap_on = true;
+}
+
+static void ap_timer_cb(void *arg)
+{
+    (void)arg;
+    if (!tonerelay_profile()->setup_ap_only) {
+        return;
+    }
+    if (s_sta_up && s_ap_on) {
+        ESP_LOGI(TAG, "joined a network: setup network off");
+        if (esp_wifi_set_mode(WIFI_MODE_STA) == ESP_OK) {
+            s_ap_on = false;
+        }
+    } else if (!s_sta_up && !s_ap_on) {
+        ESP_LOGW(TAG, "no Wi-Fi: setup network back on");
+        start_ap();
+    }
+}
+
+static void ap_schedule(uint64_t us)
+{
+    if (!s_ap_timer || !tonerelay_profile()->setup_ap_only) {
+        return;
+    }
+    esp_timer_stop(s_ap_timer);
+    esp_timer_start_once(s_ap_timer, us);
 }
 
 static void start_sta(const char *ssid, const char *pass)
@@ -222,6 +272,9 @@ static void on_wifi(void *arg, esp_event_base_t base, int32_t id, void *data)
         s_sta_up = false;
         s_sta_ip[0] = 0;
         schedule_sta_retry();
+        if (!s_ap_on) {
+            ap_schedule(AP_BACK_DELAY_US);
+        }
     } else if (base == IP_EVENT && id == IP_EVENT_STA_GOT_IP) {
         ip_event_got_ip_t *ev = (ip_event_got_ip_t *)data;
         snprintf(s_sta_ip, sizeof(s_sta_ip), IPSTR, IP2STR(&ev->ip_info.ip));
@@ -231,6 +284,9 @@ static void on_wifi(void *arg, esp_event_base_t base, int32_t id, void *data)
             esp_timer_stop(s_sta_retry_timer);
         }
         ESP_LOGI(TAG, "STA ip=%s", s_sta_ip);
+        if (s_ap_on) {
+            ap_schedule(AP_OFF_DELAY_US);
+        }
     }
 }
 
@@ -241,6 +297,11 @@ void tonerelay_wifi_start(void)
         .name = "sta_retry",
     };
     ESP_ERROR_CHECK(esp_timer_create(&timer_args, &s_sta_retry_timer));
+    const esp_timer_create_args_t ap_timer_args = {
+        .callback = ap_timer_cb,
+        .name = "ap_timer",
+    };
+    ESP_ERROR_CHECK(esp_timer_create(&ap_timer_args, &s_ap_timer));
 
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
@@ -259,8 +320,21 @@ void tonerelay_wifi_start(void)
         strncpy(s_sta_ssid, ssid, sizeof(s_sta_ssid) - 1);
     }
     memset(pass, 0, sizeof(pass));
-    start_ap();
+    if (tonerelay_profile()->setup_ap_only && s_sta_configured) {
+        /* A box that has a network starts as a station only; its setup network comes up only if that network does not. */
+        ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
+        s_ap_on = false;
+        ap_schedule(AP_BACK_DELAY_US);
+    } else {
+        start_ap();
+    }
     ESP_ERROR_CHECK(esp_wifi_start());
+    /* The default (modem sleep) puts the radio to sleep between beacons: replies after an idle gap come late, and group
+     * (multicast) frames, such as an mDNS question to everyone, can be missed. The box has mains power. */
+    esp_err_t ps = esp_wifi_set_ps(WIFI_PS_NONE);
+    if (ps != ESP_OK) {
+        ESP_LOGW(TAG, "could not turn Wi-Fi power-save off: %s", esp_err_to_name(ps));
+    }
     start_mdns();
 }
 
@@ -365,13 +439,15 @@ int tonerelay_wifi_status_json(char *buf, size_t len)
     }
     char ssid[65];
     json_escape(ssid, sizeof(ssid), s_sta_ssid);
+    char ap_ssid[33];
+    tonerelay_profile_ap_ssid(ap_ssid, sizeof(ap_ssid));
     return snprintf(
         buf,
         len,
         "{\"ok\":true,\"op\":\"wifi_status\",\"setup_required\":%s,\"sta\":%s,"
         "\"sta_configured\":%s,\"ap_secured\":%s,\"catalog_ready\":%s,"
         "\"ssid\":\"%s\",\"ip\":\"%s\",\"rssi\":%d,\"ap\":\"%s\","
-        "\"ap_ip\":\"192.168.4.1\",\"mdns\":\"tonerelay.local\"}",
+        "\"ap_ip\":\"192.168.4.1\",\"mdns\":\"%s.local\"}",
         tonerelay_wifi_setup_required() ? "true" : "false",
         s_sta_up ? "true" : "false",
         s_sta_configured ? "true" : "false",
@@ -380,7 +456,8 @@ int tonerelay_wifi_status_json(char *buf, size_t len)
         ssid,
         s_sta_ip,
         s_sta_rssi,
-        AP_SSID
+        ap_ssid,
+        tonerelay_profile()->hostname
     );
 }
 
