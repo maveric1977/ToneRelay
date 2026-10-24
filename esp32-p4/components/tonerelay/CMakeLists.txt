@@ -46,6 +46,7 @@ idf_component_register(
         "http.c"
         "relay.c"
         "profile.c"
+        "reset_button.c"
         "ble.c"
         "tonerelay.c"
         "c6_ota.c"

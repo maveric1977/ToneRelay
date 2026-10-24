@@ -478,6 +478,21 @@ int tonerelay_wifi_forget(void)
     return 0;
 }
 
+int tonerelay_wifi_factory_reset(void)
+{
+    nvs_handle_t h;
+    if (nvs_open(NVS_NS, NVS_READWRITE, &h) != ESP_OK) {
+        return -1;
+    }
+    nvs_erase_key(h, "ssid");
+    nvs_erase_key(h, "pass");
+    nvs_erase_key(h, "ap_pass");
+    esp_err_t err = nvs_commit(h);
+    nvs_close(h);
+    ESP_LOGW(TAG, "factory reset: Wi-Fi network and hotspot password erased");
+    return err == ESP_OK ? 0 : -1;
+}
+
 bool tonerelay_wifi_setup_required(void)
 {
     return !s_ap_secured || !tonerelay_catalog_ready();

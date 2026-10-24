@@ -76,9 +76,10 @@ A profile may make the setup network exist only while the box has no Wi-Fi of it
 network starts as a station only and raises the setup network if that network is not joined within 40 s; 45 s after the box gets an
 address the setup network goes off; if the Wi-Fi is lost for 40 s it comes back. The default profile keeps its setup network up.
 [Measured on the box's serial log, with a profile that sets `setup_ap_only`: the setup network went off 45.0 s after the box got an
-address; a phone kept listing the network name for 3 to 5 minutes after it had gone.
+address, and the BOOT hold ran the reset after 5.0 s; a phone kept listing the network name for 3 to 5 minutes after it had gone.
 The 40 s fallback has not been exercised.] A profile may also supply its own `GET /` page (it can use the `wifi_scan`, `wifi_join`
-and `wifi_status` operations of `/api/cmd`); without one, `GET /` is the ToneRelay editor.
+and `wifi_status` operations of `/api/cmd`); without one, `GET /` is the ToneRelay editor. Holding the BOOT button for 5 s forgets
+the Wi-Fi network and the hotspot password and restarts the box, in every profile.
 
 Two boxes with a profile that gives a fixed host name both ask for it. The instance names can differ (when the profile adds the id),
 so a client that discovers by service should use the address in the record and not the host name. [Not tested: only one box was
