@@ -272,7 +272,9 @@ static void on_wifi(void *arg, esp_event_base_t base, int32_t id, void *data)
         s_sta_up = false;
         s_sta_ip[0] = 0;
         schedule_sta_retry();
-        if (!s_ap_on) {
+        /* Arm the timer once: every failed attempt lands here, and restarting it each time (the retries are 2 to 30 s apart) would push
+         * the setup network back for ever. */
+        if (!s_ap_on && s_ap_timer && !esp_timer_is_active(s_ap_timer)) {
             ap_schedule(AP_BACK_DELAY_US);
         }
     } else if (base == IP_EVENT && id == IP_EVENT_STA_GOT_IP) {

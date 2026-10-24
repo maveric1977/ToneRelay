@@ -77,7 +77,7 @@ network starts as a station only and raises the setup network if that network is
 address the setup network goes off; if the Wi-Fi is lost for 40 s it comes back. The default profile keeps its setup network up.
 [Measured on the box's serial log, with a profile that sets `setup_ap_only`: the setup network went off 45.0 s after the box got an
 address, and the BOOT hold ran the reset after 5.0 s; a phone kept listing the network name for 3 to 5 minutes after it had gone.
-The 40 s fallback has not been exercised.] A profile may also supply its own `GET /` page (it can use the `wifi_scan`, `wifi_join`
+With a saved network that does not exist, the first join attempt was at 5.3 s and the setup network was back on at 45.1 s, 39.8 s later (before the fix in this revision every failed attempt restarted the timer, so it never fired).] A profile may also supply its own `GET /` page (it can use the `wifi_scan`, `wifi_join`
 and `wifi_status` operations of `/api/cmd`); without one, `GET /` is the ToneRelay editor. Holding the BOOT button for 5 s forgets
 the Wi-Fi network and the hotspot password and restarts the box, in every profile.
 
