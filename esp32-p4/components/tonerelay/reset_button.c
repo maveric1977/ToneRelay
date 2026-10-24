@@ -1,7 +1,7 @@
 /*
  * Factory reset by long press: hold the board's BOOT button for 5 seconds while the box is running and it forgets its Wi-Fi
- * network and hotspot password, then restarts and raises its setup network, as a new box does. The mode (ToneRelay or Helrig)
- * and the relay setting are kept, so a Helrig Box comes back as a blank Helrig Box.
+ * network and hotspot password, then restarts and raises its setup network, as a new box does. The relay setting is kept, and so is the
+ * profile (it is part of the firmware), so a box comes back blank but with the same names.
  *
  * BOOT is the chip's download-strap pin (GPIO35 on the ESP32-P4). Once the application runs it is an ordinary input. Holding
  * it while the board powers up or resets selects download mode instead, so the press has to start after the box has booted.

@@ -56,37 +56,34 @@ header (a page the box served itself). Any other `Origin` gets `{"t":"error","co
 This does not stop DNS rebinding (the rebound name appears in both headers), a non-browser client that sets
 `Origin` on purpose, or anything else on the LAN; it is not authentication.
 
-### 3b. Modes and names
+### 3b. Profiles and names
 
-The box has a saved `mode` that decides the names it announces. It is read at boot, so changing it restarts the box.
+The names a box announces, its relay-only default and its front page come from a **profile**, chosen when the firmware is built
+(`esp32-p4/components/tonerelay/profiles/README.md`). A product built on ToneRelay supplies its own profile; the default profile is
+`tonerelay`. There is no runtime switch.
 
-| Mode | Wi-Fi setup network | mDNS host name | mDNS instance | mDNS services |
+| Profile | Wi-Fi setup network | mDNS host name | mDNS instance | mDNS services |
 |---|---|---|---|---|
 | `tonerelay` (default) | `ToneRelay` | `tonerelay.local` | `ToneRelay` | `_http._tcp`, `_tonerelay._tcp` |
-| `helrig` | `Helrig Box <id>` | `helrigbox.local` | `Helrig Box <id>` | `_http._tcp`, `_tonerelay._tcp`, `_helrigbox._tcp` |
+| a product's | its prefix, with the box id if it asks | its host name | its instance, with the id if it asks | the same, plus its own `_<name>._tcp` |
 
-`<id>` is the last three bytes of the chip's base MAC, in hex, the same value as the `id` TXT key. The `helrig` mode also turns
-relay-only on. Nothing else depends on the mode: the contract, the port (80) and the `/raw` protocol are the same in both, and
-`_tonerelay._tcp` is advertised in every mode so a client that follows this contract can always find the box. The TXT keys on
-the service records are `proto`, `path` (`/raw`), `id` and `mode`.
+`<id>` is the last three bytes of the chip's base MAC, in hex, the same value as the `id` TXT key. Nothing else depends on the
+profile: the contract, the port (80) and the `/raw` protocol are the same in every build, and `_tonerelay._tcp` is advertised in every
+build so a client that follows this contract can always find the box. The TXT keys on the service records are `proto`, `path`
+(`/raw`), `id` and `profile` (the profile's name).
 
-After a mode change other devices may keep listing the old names (mDNS lists and Wi-Fi scan lists are cached) for up to about an
-hour. The old names no longer answer, so a client cannot be misdirected by them, and the lists clear by themselves. [Measured on
-one Mac: the old Wi-Fi network name disappeared from its list within a few minutes, and the old mDNS instance stayed listed
-80 s after the change although it no longer resolved.]
+A profile may make the setup network exist only while the box has no Wi-Fi of its own to use (`setup_ap_only`): a box with a saved
+network starts as a station only and raises the setup network if that network is not joined within 40 s; 45 s after the box gets an
+address the setup network goes off; if the Wi-Fi is lost for 40 s it comes back. The default profile keeps its setup network up.
+[Measured on the box's serial log, with a profile that sets `setup_ap_only`: the setup network went off 45.0 s after the box got an
+address, and the BOOT hold ran the reset after 5.0 s; a phone kept listing the network name for 3 to 5 minutes after it had gone.
+The 40 s fallback has not been exercised.] A profile may also supply its own `GET /` page (it can use the `wifi_scan`, `wifi_join`
+and `wifi_status` operations of `/api/cmd`); without one, `GET /` is the ToneRelay editor. Holding the BOOT button for 5 s forgets
+the Wi-Fi network and the hotspot password and restarts the box, in every profile.
 
-Two boxes in `helrig` mode on one network both ask for `helrigbox.local`. The instance names differ (they carry the id), so a
-client that discovers by service should use the address in the record and not the host name. [Not tested: only one box was
-available.]
-
-In the `helrig` mode the setup network exists only while the box has no Wi-Fi of its own to use: a box with a saved network starts as a
-station only and raises the setup network if that network is not joined within 40 s; 45 s after the box gets an address the
-setup network goes off; if the Wi-Fi is lost for 40 s it comes back. The `tonerelay` mode keeps its setup network up as before. [Measured on the box's serial log: the setup network went off 45.0 s after the box got an address, and the BOOT hold ran the reset after 5.0 s; a phone kept listing the network name for 3 to 5 minutes after it had gone. The 40 s fallback has not been exercised.] In
-the `helrig` mode `GET /` is the box's own setup and status page (it uses the `wifi_scan`, `wifi_join` and `wifi_status`
-operations of `/api/cmd`) and not the ToneRelay editor. Holding the BOOT button for 5 s forgets the Wi-Fi network and the hotspot
-password in either mode and restarts the box; the mode is kept.
-
-The mode is read and set with `GET` / `POST /api/relay` (section 8). The BLE name stays `ToneRelay` in every mode.
+Two boxes with a profile that gives a fixed host name both ask for it. The instance names can differ (when the profile adds the id),
+so a client that discovers by service should use the address in the record and not the host name. [Not tested: only one box was
+available.] The BLE name stays `ToneRelay` in every profile.
 
 ## 4. Messages
 
@@ -155,18 +152,15 @@ the pedal's session close (it knows nothing of the pedal's protocol).
 `GET /api/relay` returns, without opening the pedal:
 
 ```json
-{"ok":true,"relay_only":true,"client":false,"proto":0,"mode":"tonerelay","restart":false,
+{"ok":true,"relay_only":true,"client":false,"proto":0,"profile":"tonerelay",
  "pedal":{"present":true,"pid":"0x424a","vid":"0x0e41","product":"HELIX   ","serial":"   0000123"},
  "reset_reason":1,"prev_crumbs":[]}
 ```
 
-`client` is true while a client holds the pedal. `mode` is the running mode (section 3b); `restart` is true in the reply to a request
-that changed it. `reset_reason` is `esp_reset_reason()` and `prev_crumbs` are lifecycle
-markers kept across a reset (diagnostics; they helped find a crash in this very code). `POST /api/relay` with
-`{"on":true}` or `{"on":false}` changes the setting and returns the same JSON; turning it off disconnects a connected client.
-`{"mode":"helrig"}` or `{"mode":"tonerelay"}` saves the mode and restarts the box about 0.8 s after the reply, which says
-`"restart":true`; an unknown mode gets `400 {"ok":false,"error":"unknown_mode"}`, and a request while a client holds the pedal gets
-`409 {"ok":false,"error":"busy"}` because a restart would drop a session the pedal still believes in. The busy check comes first, so while a client holds the pedal even an unknown mode gets `409`.
+`client` is true while a client holds the pedal. `profile` is the name of the firmware's profile (section 3b). `reset_reason` is
+`esp_reset_reason()` and `prev_crumbs` are lifecycle markers kept across a reset (diagnostics; they helped find a crash in this very
+code). `POST /api/relay` with `{"on":true}` or `{"on":false}` changes the setting and returns the same JSON; turning it off
+disconnects a connected client.
 
 ## 9. Versioning
 

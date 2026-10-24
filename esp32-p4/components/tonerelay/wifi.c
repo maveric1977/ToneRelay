@@ -31,7 +31,7 @@ static int s_retry;
 static esp_timer_handle_t s_sta_retry_timer;
 static esp_timer_handle_t s_ap_timer;
 static bool s_ap_on;
-/* In a mode whose setup network is only for setup (the Helrig mode): how long after the box has joined a network the setup
+/* For a profile whose setup network is only for setup (setup_ap_only): how long after the box has joined a network the setup
  * network goes off (time for the setup page to say so), and how long a box without Wi-Fi waits before it comes back. */
 #define AP_OFF_DELAY_US (45ULL * 1000000ULL)
 #define AP_BACK_DELAY_US (40ULL * 1000000ULL)
@@ -137,33 +137,33 @@ static void start_mdns(void)
         ESP_LOGW(TAG, "mdns_init failed");
         return;
     }
-    const tonerelay_mode_t *mode = tonerelay_mode();
+    const tonerelay_profile_t *profile = tonerelay_profile();
     char instance[40];
-    tonerelay_mode_instance(instance, sizeof(instance));
-    mdns_hostname_set(mode->hostname);
+    tonerelay_profile_instance(instance, sizeof(instance));
+    mdns_hostname_set(profile->hostname);
     mdns_instance_name_set(instance);
     mdns_service_add(NULL, "_http", "_tcp", 80, NULL, 0);
     /* Lets a client find a box by service type. `id` is the last three bytes of the chip's base MAC. */
     char id[8];
-    tonerelay_mode_id(id, sizeof(id));
+    tonerelay_profile_id(id, sizeof(id));
     char proto[8];
     snprintf(proto, sizeof(proto), "%d", TONERELAY_RELAY_PROTO);
-    mdns_txt_item_t txt[] = {{"proto", proto}, {"path", "/raw"}, {"id", id}, {"mode", mode->name}};
+    mdns_txt_item_t txt[] = {{"proto", proto}, {"path", "/raw"}, {"id", id}, {"profile", profile->name}};
     size_t n_txt = sizeof(txt) / sizeof(txt[0]);
-    /* The contract's own service type is always advertised; a mode with names of its own adds its type. */
+    /* The contract's own service type is always advertised; a profile with names of its own adds its type. */
     mdns_service_add(NULL, "_tonerelay", "_tcp", 80, txt, n_txt);
-    if (strcmp(mode->service, "_tonerelay") != 0) {
-        mdns_service_add(NULL, mode->service, "_tcp", 80, txt, n_txt);
+    if (strcmp(profile->service, "_tonerelay") != 0) {
+        mdns_service_add(NULL, profile->service, "_tcp", 80, txt, n_txt);
     }
     started = true;
-    ESP_LOGI(TAG, "mDNS %s.local (%s)", mode->hostname, instance);
+    ESP_LOGI(TAG, "mDNS %s.local (%s)", profile->hostname, instance);
 }
 
 static void start_ap(void)
 {
     wifi_config_t ap = {0};
     char ap_ssid[33];
-    tonerelay_mode_ap_ssid(ap_ssid, sizeof(ap_ssid));
+    tonerelay_profile_ap_ssid(ap_ssid, sizeof(ap_ssid));
     strncpy((char *)ap.ap.ssid, ap_ssid, sizeof(ap.ap.ssid));
     ap.ap.ssid_len = strlen(ap_ssid);
     ap.ap.channel = 6;
@@ -189,7 +189,7 @@ static void start_ap(void)
 static void ap_timer_cb(void *arg)
 {
     (void)arg;
-    if (!tonerelay_mode()->setup_ap_only) {
+    if (!tonerelay_profile()->setup_ap_only) {
         return;
     }
     if (s_sta_up && s_ap_on) {
@@ -205,7 +205,7 @@ static void ap_timer_cb(void *arg)
 
 static void ap_schedule(uint64_t us)
 {
-    if (!s_ap_timer || !tonerelay_mode()->setup_ap_only) {
+    if (!s_ap_timer || !tonerelay_profile()->setup_ap_only) {
         return;
     }
     esp_timer_stop(s_ap_timer);
@@ -320,7 +320,7 @@ void tonerelay_wifi_start(void)
         strncpy(s_sta_ssid, ssid, sizeof(s_sta_ssid) - 1);
     }
     memset(pass, 0, sizeof(pass));
-    if (tonerelay_mode()->setup_ap_only && s_sta_configured) {
+    if (tonerelay_profile()->setup_ap_only && s_sta_configured) {
         /* A box that has a network starts as a station only; its setup network comes up only if that network does not. */
         ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
         s_ap_on = false;
@@ -440,7 +440,7 @@ int tonerelay_wifi_status_json(char *buf, size_t len)
     char ssid[65];
     json_escape(ssid, sizeof(ssid), s_sta_ssid);
     char ap_ssid[33];
-    tonerelay_mode_ap_ssid(ap_ssid, sizeof(ap_ssid));
+    tonerelay_profile_ap_ssid(ap_ssid, sizeof(ap_ssid));
     return snprintf(
         buf,
         len,
@@ -457,7 +457,7 @@ int tonerelay_wifi_status_json(char *buf, size_t len)
         s_sta_ip,
         s_sta_rssi,
         ap_ssid,
-        tonerelay_mode()->hostname
+        tonerelay_profile()->hostname
     );
 }
 

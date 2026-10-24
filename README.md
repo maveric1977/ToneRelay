@@ -179,10 +179,13 @@ The Pi exposes the same JSON commands over a WebSocket (`ws://HOST/ws`). You
 can drive that socket from your own editor and skip the ToneRelay GUI. See
 [docs/integrators.md](docs/integrators.md).
 
-## Use a box with Helrig
+## Products built on ToneRelay
 
-[Helrig](https://helrig.com), a separate editor for Helix and HX presets, can reach a pedal through a ToneRelay
-box over Wi-Fi, using the relay-only mode. See [docs/helrig.md](docs/helrig.md).
+The firmware's identity (the names the box shows the network, its relay-only default, and an optional front page of its own) is a build-time
+**profile**, so a product can be built on ToneRelay without changing it: see
+[esp32-p4/components/tonerelay/profiles/README.md](esp32-p4/components/tonerelay/profiles/README.md). The relay mode
+([docs/raw-relay-protocol.md](docs/raw-relay-protocol.md)) is the shared contract: a client that speaks it works with every profile.
+The [Helrig Box](https://helrig.com), a box for the Helrig preset editor, is one such product.
 
 ## Acknowledgements
 
