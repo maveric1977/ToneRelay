@@ -606,6 +606,16 @@ static esp_err_t pair_api(httpd_req_t *req)
 {
     char out[160];
     if (req->method == HTTP_POST) {
+        int64_t now = now_ms();
+        if (s_pair_until_ms != 0 && now < s_pair_until_ms) {
+            /* A second request must not replace the nonce: that would hand the coming button press to whoever asked last. */
+            int left = (int)((s_pair_until_ms - now) / 1000);
+            if (left < 1) {
+                left = 1;
+            }
+            snprintf(out, sizeof(out), "{\"ok\":false,\"error\":\"pairing_busy\",\"seconds\":%d}", left);
+            return json_reply(req, "409 Conflict", out);
+        }
         uint8_t raw[8];
         esp_fill_random(raw, sizeof(raw));
         for (size_t i = 0; i < sizeof(raw); i++) {

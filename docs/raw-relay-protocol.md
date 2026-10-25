@@ -75,6 +75,7 @@ The serial console prints the current token with the command `token`.
 the button on the box:
 
 1. `POST /api/pair` opens a 30 s window and returns `{"ok":true,"pairing":true,"seconds":30,"nonce":"<16 hex>"}`. It needs no token.
+   A second POST while that window is open does not replace the nonce. It answers `409` with `{"ok":false,"error":"pairing_busy","seconds":N}`.
 2. A short press of the BOOT button (under 5 s; the long press is the factory reset) confirms.
 3. `GET /api/pair?nonce=<nonce>` returns `{"ok":true,"pairing":true,"confirmed":false,"seconds_left":N}` until the press, then, once,
    `{"ok":true,"pairing":false,"confirmed":true,"token":"<token>"}` and the window closes. A wrong nonce gets `403 bad_nonce`, and
