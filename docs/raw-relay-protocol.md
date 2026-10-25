@@ -71,6 +71,20 @@ subprotocol, not a per-box value. A browser cannot set a header on a WebSocket; 
 The BOOT-button factory reset deletes the token, and a new one is made at the next start, so a reset box has to be paired again.
 The serial console prints the current token with the command `token`.
 
+**Pairing.** The token must not be readable by whoever is on the network, so a client gets it by asking and having someone press
+the button on the box:
+
+1. `POST /api/pair` opens a 30 s window and returns `{"ok":true,"pairing":true,"seconds":30,"nonce":"<16 hex>"}`. It needs no token.
+2. A short press of the BOOT button (under 5 s; the long press is the factory reset) confirms.
+3. `GET /api/pair?nonce=<nonce>` returns `{"ok":true,"pairing":true,"confirmed":false,"seconds_left":N}` until the press, then, once,
+   `{"ok":true,"pairing":false,"confirmed":true,"token":"<token>"}` and the window closes. A wrong nonce gets `403 bad_nonce`, and
+   with no window open the answer is `{"ok":true,"pairing":false}`.
+
+The nonce keeps another client on the network from collecting the token that the person at the box meant for this one. It travels in
+plain HTTP, so a passive eavesdropper on the LAN who sees it, and a press of the button inside the window, could still get the
+token: this is meant to keep out casual and drive-by access on a trusted network, not an attacker already watching the traffic.
+[Not measured: how reliably a person presses within the window; the window length is a guess.]
+
 ### 3b. Profiles and names
 
 The names a box announces, its relay-only default and its front page come from a **profile**, chosen when the firmware is built

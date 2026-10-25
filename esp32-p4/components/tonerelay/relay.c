@@ -582,6 +582,66 @@ static esp_err_t relay_api(httpd_req_t *req)
     return httpd_resp_sendstr(req, out);
 }
 
+/* -- pairing: how a client gets the token ---------------------------------------------------- */
+
+/* The token must not be readable by whoever is on the network, so it is handed out only to a client that asked for it and only
+ * after someone pressed the BOOT button on the box:
+ *   POST /api/pair             opens a 30 s window and returns a one-time nonce
+ *   (a short press of BOOT)    confirms; a long press is still the factory reset
+ *   GET /api/pair?nonce=...    returns the token once, after the press, to the client that holds the nonce */
+#define PAIR_WINDOW_MS 30000
+static volatile int64_t s_pair_until_ms; /* 0: no window open */
+static volatile bool s_pair_confirmed;
+static char s_pair_nonce[17];
+
+void tonerelay_relay_pair_press(void)
+{
+    if (s_pair_until_ms != 0 && now_ms() < s_pair_until_ms) {
+        s_pair_confirmed = true;
+        ESP_LOGI(TAG, "pairing: button pressed");
+    }
+}
+
+static esp_err_t pair_api(httpd_req_t *req)
+{
+    char out[160];
+    if (req->method == HTTP_POST) {
+        uint8_t raw[8];
+        esp_fill_random(raw, sizeof(raw));
+        for (size_t i = 0; i < sizeof(raw); i++) {
+            snprintf(s_pair_nonce + 2 * i, 3, "%02x", raw[i]);
+        }
+        s_pair_confirmed = false;
+        s_pair_until_ms = now_ms() + PAIR_WINDOW_MS;
+        ESP_LOGI(TAG, "pairing: window open for %d s, press BOOT on the box", PAIR_WINDOW_MS / 1000);
+        snprintf(out, sizeof(out), "{\"ok\":true,\"pairing\":true,\"seconds\":%d,\"nonce\":\"%s\"}", PAIR_WINDOW_MS / 1000, s_pair_nonce);
+        return json_reply(req, "200 OK", out);
+    }
+    int64_t now = now_ms();
+    if (s_pair_until_ms == 0 || now >= s_pair_until_ms) {
+        s_pair_until_ms = 0;
+        return json_reply(req, "200 OK", "{\"ok\":true,\"pairing\":false}");
+    }
+    char query[64] = "", nonce[24] = "";
+    if (httpd_req_get_url_query_str(req, query, sizeof(query)) == ESP_OK) {
+        httpd_query_key_value(query, "nonce", nonce, sizeof(nonce));
+    }
+    if (!same_secret(nonce, strlen(nonce), s_pair_nonce, strlen(s_pair_nonce))) {
+        return json_reply(req, "403 Forbidden", "{\"ok\":false,\"error\":\"bad_nonce\"}");
+    }
+    if (!s_pair_confirmed) {
+        snprintf(out, sizeof(out), "{\"ok\":true,\"pairing\":true,\"confirmed\":false,\"seconds_left\":%d}",
+                 (int)((s_pair_until_ms - now) / 1000));
+        return json_reply(req, "200 OK", out);
+    }
+    s_pair_until_ms = 0; /* the token goes out once */
+    s_pair_confirmed = false;
+    memset(s_pair_nonce, 0, sizeof(s_pair_nonce));
+    snprintf(out, sizeof(out), "{\"ok\":true,\"pairing\":false,\"confirmed\":true,\"token\":\"%s\"}", s_token);
+    ESP_LOGI(TAG, "pairing: token handed out");
+    return json_reply(req, "200 OK", out);
+}
+
 void tonerelay_relay_register(httpd_handle_t srv)
 {
     const httpd_uri_t raw = {.uri = "/raw", .method = HTTP_GET, .handler = raw_handler, .is_websocket = true,
@@ -591,4 +651,8 @@ void tonerelay_relay_register(httpd_handle_t srv)
     httpd_register_uri_handler(srv, &raw);
     httpd_register_uri_handler(srv, &api_get);
     httpd_register_uri_handler(srv, &api_post);
+    const httpd_uri_t pair_get = {.uri = "/api/pair", .method = HTTP_GET, .handler = pair_api};
+    const httpd_uri_t pair_post = {.uri = "/api/pair", .method = HTTP_POST, .handler = pair_api};
+    httpd_register_uri_handler(srv, &pair_get);
+    httpd_register_uri_handler(srv, &pair_post);
 }

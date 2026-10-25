@@ -48,7 +48,7 @@ The password is not logged. `wifi-forget` clears the **home STA** credentials on
 
 ### Factory reset (BOOT button)
 
-Hold the board's **BOOT** button for 5 seconds while the firmware is running. The box forgets the home network **and** the hotspot password, restarts, and raises
+Hold the board's **BOOT** button for 5 seconds while the firmware is running. The box forgets the home network, the hotspot password **and** its token, restarts, and raises
 its open **ToneRelay** setup network again, as a new box does. The catalog on flash is kept. Do not hold BOOT while the board powers up or resets: that starts the
 chip's download mode instead. The NANO has only a power LED, so nothing blinks; the setup network reappearing about 5 seconds after the restart is the sign.
 

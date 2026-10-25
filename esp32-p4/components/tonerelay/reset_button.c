@@ -1,6 +1,7 @@
 /*
  * Factory reset by long press: hold the board's BOOT button for 5 seconds while the box is running and it forgets its Wi-Fi
  * network and hotspot password, then restarts and raises its open setup network, as a new box does. The catalog on flash is kept.
+ * A short press does nothing, except that it confirms an open pairing window (relay.c).
  *
  * BOOT is the chip's download-strap pin (GPIO35 on the ESP32-P4). Once the application runs it is an ordinary input. Holding
  * it while the board powers up or resets selects download mode instead, so the press has to start after the box has booted.
@@ -20,6 +21,7 @@
 #endif
 #define HOLD_US (5LL * 1000 * 1000)
 #define POLL_MS 50
+#define MIN_PRESS_US (80LL * 1000) /* a shorter contact is bounce, not a press */
 
 static void reset_task(void *arg)
 {
@@ -37,6 +39,12 @@ static void reset_task(void *arg)
     for (;;) {
         vTaskDelay(pdMS_TO_TICKS(POLL_MS));
         if (gpio_get_level(TONERELAY_RESET_GPIO) != 0) {
+            if (down_at != 0) {
+                int64_t held = esp_timer_get_time() - down_at;
+                if (held >= MIN_PRESS_US && held < HOLD_US) {
+                    tonerelay_relay_pair_press(); /* a short press confirms an open pairing window */
+                }
+            }
             down_at = 0;
             continue;
         }
