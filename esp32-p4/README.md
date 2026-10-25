@@ -66,3 +66,8 @@ The peripheral name is **ToneRelay**, with the same service/characteristic UUIDs
 ## Custom PCB
 
 A KiCad handoff for a battery-powered board that keeps this firmware's SDIO/USB pin map is in [docs/hardware/README.md](../docs/hardware/README.md).
+
+## Products built on ToneRelay
+
+A product with its own names, setup page and defaults keeps its **profile** in its own repository and builds ToneRelay with it:
+see [components/tonerelay/profiles/README.md](components/tonerelay/profiles/README.md).
