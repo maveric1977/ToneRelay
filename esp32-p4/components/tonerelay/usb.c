@@ -65,6 +65,16 @@ static unsigned s_rx_drops;
 static unsigned s_in_ok;
 static unsigned s_tx_ok;
 static unsigned s_in_logs;
+/* Transfers submitted whose callback has not run yet, counted per transfer (IN and OUT alike, so a late completion can only account
+ * for itself). Closing waits for both counts to reach zero before it releases the interface, closes the device and frees the transfers:
+ * freeing a transfer the host library still has in flight asserts in hcd_urb_dequeue (hcd_dwc.c) when its completion is delivered,
+ * and the interface and device cannot be released under it either. */
+static volatile int s_in_flight;
+static volatile int s_out_flight;
+/* A close that found transfers still in flight after CLOSE_WAIT_MS keeps the device, the interface and the transfers as they are, and
+ * sets this; the next open finishes the close once they have landed (and fails with -7 until then). */
+static bool s_close_pending;
+#define CLOSE_WAIT_MS 500
 static unsigned s_tx_logs;
 static int s_last_in_n;
 static int s_last_in_st;
@@ -117,8 +127,10 @@ static void post_in(usb_transfer_t *xfer)
     xfer->bEndpointAddress = EP_IN;
     xfer->device_handle = s_dev;
     xfer->timeout_ms = 0;
+    __atomic_fetch_add(&s_in_flight, 1, __ATOMIC_SEQ_CST);
     esp_err_t err = usb_host_transfer_submit(xfer);
     if (err != ESP_OK) {
+        __atomic_fetch_sub(&s_in_flight, 1, __ATOMIC_SEQ_CST);
         ESP_LOGW(TAG, "post_in %s", esp_err_to_name(err));
     }
 }
@@ -180,8 +192,9 @@ static void flush_parked(void)
 
 static void in_cb(usb_transfer_t *xfer)
 {
-    if (s_closing) {
-        return;
+    __atomic_fetch_sub(&s_in_flight, 1, __ATOMIC_SEQ_CST);
+    if (s_closing || !s_open) {
+        return; /* closing, or a completion landing after a close: nothing to deliver, and the transfer must not be re-posted */
     }
     int n = xfer->actual_num_bytes;
     if (n < 0) {
@@ -223,6 +236,7 @@ static void in_cb(usb_transfer_t *xfer)
 
 static void out_cb(usb_transfer_t *xfer)
 {
+    __atomic_fetch_sub(&s_out_flight, 1, __ATOMIC_SEQ_CST);
     s_out_status = (int)xfer->status;
     s_out_actual = xfer->actual_num_bytes;
     if (s_out_done) {
@@ -431,6 +445,34 @@ int helix_usb_start(void)
     return 0;
 }
 
+/* Releases the interface, closes the device and frees the transfers, once none of them is in flight. Waits up to wait_ms for that. If
+ * some still are, nothing is changed and it returns false. Call with s_lock held. */
+static bool finish_close(int wait_ms)
+{
+    int waited = 0;
+    while ((s_in_flight > 0 || s_out_flight > 0) && waited < wait_ms) {
+        vTaskDelay(pdMS_TO_TICKS(10));
+        waited += 10;
+    }
+    if (s_in_flight > 0 || s_out_flight > 0) {
+        ESP_LOGW(TAG, "close: %d IN and %d OUT still in flight after %d ms", s_in_flight, s_out_flight, waited);
+        return false;
+    }
+    ESP_LOGI(TAG, "close: transfers drained in %d ms", waited);
+    if (s_dev) {
+        usb_host_interface_release(s_client, s_dev, IFACE);
+        usb_host_device_close(s_client, s_dev);
+        s_dev = NULL;
+    }
+    for (int i = 0; i < IN_URBS; i++) {
+        usb_host_transfer_free(s_in[i]);
+        s_in[i] = NULL;
+    }
+    usb_host_transfer_free(s_out);
+    s_out = NULL;
+    return true;
+}
+
 int helix_usb_open(uint16_t *pid_out)
 {
     xSemaphoreTake(s_lock, portMAX_DELAY);
@@ -446,9 +488,20 @@ int helix_usb_open(uint16_t *pid_out)
         xSemaphoreGive(s_lock);
         return 0;
     }
+    if (s_close_pending) {
+        if (!finish_close(CLOSE_WAIT_MS)) {
+            set_err("previous close still pending");
+            xSemaphoreGive(s_lock);
+            return -7;
+        }
+        s_close_pending = false;
+        /* device_close just ran. The gone event it raises arrives after this, so keep ignoring it for 2 s. */
+        s_close_us = esp_timer_get_time();
+    } else {
+        s_ignore_gone = false;
+    }
 
     s_closing = false;
-    s_ignore_gone = false;
     esp_err_t err = usb_host_device_open(s_client, s_addr, &s_dev);
     if (err != ESP_OK) {
         snprintf(s_last_err, sizeof(s_last_err), "device_open %s addr=%u", esp_err_to_name(err), s_addr);
@@ -555,21 +608,19 @@ int helix_usb_close(void)
         usb_host_endpoint_flush(s_dev, EP_IN);
         usb_host_endpoint_halt(s_dev, EP_OUT);
         usb_host_endpoint_flush(s_dev, EP_OUT);
-        usb_host_interface_release(s_client, s_dev, IFACE);
-        usb_host_device_close(s_client, s_dev);
-        s_dev = NULL;
     }
-    for (int i = 0; i < IN_URBS; i++) {
-        usb_host_transfer_free(s_in[i]);
-        s_in[i] = NULL;
-    }
-    usb_host_transfer_free(s_out);
-    s_out = NULL;
+    /* The flush cancels what is in flight; the client task delivers those completions asynchronously. Let them land before the
+     * interface, device and transfers go away. If they have not landed in time, leave all of it as it is and finish at the next open. */
+    s_close_pending = !finish_close(CLOSE_WAIT_MS);
     if (s_rx) {
         xQueueReset(s_rx);
     }
-    ESP_LOGI(TAG, "interface released parked_peak=%u drops=%u", s_parked_peak, s_rx_drops);
-    s_close_us = esp_timer_get_time();
+    if (s_close_pending) {
+        ESP_LOGW(TAG, "close pending: the device stays open until its transfers land, the next open finishes it");
+    } else {
+        ESP_LOGI(TAG, "interface released parked_peak=%u drops=%u", s_parked_peak, s_rx_drops);
+        s_close_us = esp_timer_get_time();
+    }
     s_closing = false;
     xSemaphoreGive(s_lock);
     return 0;
@@ -595,9 +646,11 @@ int helix_usb_send(const uint8_t *data, size_t len, uint32_t timeout_ms)
     s_out->device_handle = s_dev;
     s_out->timeout_ms = timeout_ms;
     xSemaphoreTake(s_out_done, 0);
+    __atomic_fetch_add(&s_out_flight, 1, __ATOMIC_SEQ_CST);
     esp_err_t err = usb_host_transfer_submit(s_out);
     xSemaphoreGive(s_lock);
     if (err != ESP_OK) {
+        __atomic_fetch_sub(&s_out_flight, 1, __ATOMIC_SEQ_CST);
         return -3;
     }
     TickType_t ticks = pdMS_TO_TICKS(timeout_ms ? timeout_ms : 1);
