@@ -23,6 +23,10 @@ static void parse_wifi_line(char *line)
         if (strcmp(line, "wifi-forget") == 0) {
             tonerelay_wifi_forget();
             printf("wifi credentials cleared\n");
+        } else if (strcmp(line, "token") == 0) {
+            char token[40];
+            tonerelay_relay_token(token, sizeof(token));
+            printf("token: %s\n", token);
         }
         return;
     }
@@ -81,7 +85,7 @@ static void console_task(void *arg)
 {
     (void)arg;
     char line[192];
-    printf("ToneRelay UART: wifi SSID password   |   wifi-forget\n");
+    printf("ToneRelay UART: wifi SSID password   |   wifi-forget   |   token\n");
     while (true) {
         if (!fgets(line, sizeof(line), stdin)) {
             clearerr(stdin);
@@ -110,6 +114,7 @@ void tonerelay_start(void)
     tonerelay_wifi_start();
     tonerelay_reset_button_start();
     tonerelay_c6_sync();
+    tonerelay_relay_start();
     tonerelay_http_start();
     /* C6 2.12.13 VHCI does not answer HCI reset; NimBLE then retries every 2s
      * and starves httpd. Wi-Fi GUI still works. Re-enable when C6 HCI works. */

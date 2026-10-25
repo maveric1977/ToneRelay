@@ -48,7 +48,7 @@ The password is not logged. `wifi-forget` clears the **home STA** credentials on
 
 ### Factory reset (BOOT button)
 
-Hold the board's **BOOT** button for 5 seconds while the firmware is running. The box forgets the home network **and** the hotspot password, restarts, and raises
+Hold the board's **BOOT** button for 5 seconds while the firmware is running. The box forgets the home network, the hotspot password **and** its token, restarts, and raises
 its open **ToneRelay** setup network again, as a new box does. The catalog on flash is kept. Do not hold BOOT while the board powers up or resets: that starts the
 chip's download mode instead. The NANO has only a power LED, so nothing blinks; the setup network reappearing about 5 seconds after the restart is the sign.
 
@@ -66,3 +66,8 @@ The peripheral name is **ToneRelay**, with the same service/characteristic UUIDs
 ## Custom PCB
 
 A KiCad handoff for a battery-powered board that keeps this firmware's SDIO/USB pin map is in [docs/hardware/README.md](../docs/hardware/README.md).
+
+## Products built on ToneRelay
+
+A product with its own names, setup page and defaults keeps its **profile** in its own repository and builds ToneRelay with it:
+see [components/tonerelay/profiles/README.md](components/tonerelay/profiles/README.md).

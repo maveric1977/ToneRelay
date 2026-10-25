@@ -26,6 +26,9 @@ char *hxbridge_handle_json(const char *json, int json_len);
 char *hxbridge_catalog_reload(void);
 void hxbridge_free(char *p);
 
+void tonerelay_relay_register(httpd_handle_t srv);
+void tonerelay_relay_on_close(httpd_handle_t hd, int fd);
+
 static const char *FALLBACK =
     "<!DOCTYPE html><html><head><meta charset=utf-8>"
     "<meta name=viewport content=\"width=device-width,initial-scale=1\">"
@@ -283,6 +286,18 @@ static esp_err_t api_catalog_commit(httpd_req_t *req)
 
 static esp_err_t static_get(httpd_req_t *req)
 {
+    /* A profile may bring a front page of its own (a product's setup and status page) in place of the stock one. */
+    const tonerelay_profile_t *profile = tonerelay_profile();
+    if ((strcmp(req->uri, "/") == 0 || strcmp(req->uri, "/index.html") == 0) && profile->setup_page) {
+        size_t len = 0;
+        const char *html = profile->setup_page(&len);
+        httpd_resp_set_type(req, "text/html; charset=utf-8");
+        httpd_resp_set_hdr(req, "Cache-Control", "no-store");
+        if (req->method == HTTP_HEAD) {
+            return httpd_resp_send(req, NULL, (ssize_t)len);
+        }
+        return httpd_resp_send(req, html, (ssize_t)len);
+    }
     const www_file_t *f = find_www(req->uri);
     if (f) {
         httpd_resp_set_type(req, mime_for(f->path));
@@ -442,6 +457,7 @@ void tonerelay_http_start(void)
     cfg.send_wait_timeout = 60;
     cfg.uri_match_fn = httpd_uri_match_wildcard;
     cfg.server_port = 80;
+    cfg.close_fn = tonerelay_relay_on_close;
     httpd_handle_t srv = NULL;
     if (httpd_start(&srv, &cfg) != ESP_OK) {
         ESP_LOGE(TAG, "httpd_start failed");
@@ -501,6 +517,7 @@ void tonerelay_http_start(void)
     httpd_register_uri_handler(srv, &cat_commit);
     httpd_register_uri_handler(srv, &cat_put);
     httpd_register_uri_handler(srv, &ws);
+    tonerelay_relay_register(srv); /* before the /* wildcard so /raw and /api/relay match first */
     httpd_register_uri_handler(srv, &any);
     httpd_register_uri_handler(srv, &any_head);
     ESP_LOGI(TAG, "HTTP on :80 (%u web files)", (unsigned)www_files_count);
