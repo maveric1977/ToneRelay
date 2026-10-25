@@ -37,12 +37,12 @@ existing code's comments]. Turn relay mode on before attaching the pedal: `POST 
 - `ws://<host>/raw` on the existing HTTP server (port 80). One client at a time.
 - Refusals arrive as a text message and a close, after the WebSocket upgrade (not as an HTTP status):
   `relay_unavailable` (relay mode is off), `busy` (another client holds the pedal),
-  `box_session_open` (the box's own session already holds the pedal), `origin_not_allowed` (section 3a).
+  `box_session_open` (the box's own session already holds the pedal), `origin_not_allowed` (section 3a),
+  `unauthorized` (section 3c).
 - The box sets `TCP_NODELAY` and TCP keepalive on the socket (section 6a). Clients should set `TCP_NODELAY`
   too: they send transfers in quick pairs (for example 20 then 28 bytes), and Nagle's algorithm can hold the
   second until the first is acknowledged. [The effect on this stack was not measured.]
-- *(planned)* A per-box token, sent as a WebSocket subprotocol `tonerelay.v0.<token>`, for `/raw` and
-  ideally `/ws` and `/api/cmd` too. Today nothing here is authenticated; use it on a trusted LAN.
+- `/raw` needs the box's token (section 3c). The connection is plain `ws://`: use it on a trusted LAN.
 - mDNS: the box advertises `_tonerelay._tcp` on port 80 next to `_http._tcp`, with TXT keys `proto` (the
   `proto` of the hello), `path` (`/raw`) and `id` (the last three bytes of the chip's base MAC, in hex). A firmware version key
   is not defined yet because the firmware has no version string.
@@ -55,6 +55,21 @@ browser. `/raw` accepts an upgrade with no `Origin` (a native client) or with an
 header (a page the box served itself). Any other `Origin` gets `{"t":"error","code":"origin_not_allowed"}` and a close.
 This does not stop DNS rebinding (the rebound name appears in both headers), a non-browser client that sets
 `Origin` on purpose, or anything else on the LAN; it is not authentication.
+
+### 3c. Token
+
+Every box has a token: 128 random bits as 32 hex characters, made on first boot and kept in NVS. A client sends it as
+`Authorization: Bearer <token>` on the `/raw` upgrade and on `POST /api/relay`. Without it, or with a wrong one, `/raw` answers
+`{"t":"error","code":"unauthorized"}` and a close, and `POST /api/relay` answers `401 {"ok":false,"error":"unauthorized"}`. The
+comparison takes the same time wherever the strings differ. `GET /api/relay` is open (a client needs it to find out whether a box
+wants a token: it says `"auth":"bearer"`), and so are `/ws` and `/api/cmd` for now (section 11).
+
+The token travels as a header and not as a WebSocket subprotocol, because the HTTP server can echo only a fixed
+subprotocol, not a per-box value. A browser cannot set a header on a WebSocket; browsers are kept out by the `Origin` check
+(section 3a) anyway.
+
+The BOOT-button factory reset deletes the token, and a new one is made at the next start, so a reset box has to be paired again.
+The serial console prints the current token with the command `token`.
 
 ### 3b. Profiles and names
 
@@ -154,16 +169,18 @@ the pedal's session close (it knows nothing of the pedal's protocol).
 `GET /api/relay` returns, without opening the pedal:
 
 ```json
-{"ok":true,"relay_only":true,"client":false,"proto":0,"profile":"tonerelay",
+{"ok":true,"relay_only":true,"client":false,"proto":0,"profile":"tonerelay","auth":"bearer",
  "pedal":{"present":true,"pid":"0x424a","vid":"0x0e41","product":"HELIX   ","serial":"   0000123"}}
 ```
 
-`client` is true while a client holds the pedal. `profile` is the name of the firmware's profile (section 3b). The reset reason and
+`client` is true while a client holds the pedal. `profile` is the name of the firmware's profile (section 3b). `auth` says how the
+box is secured (`bearer`: it wants the token, section 3c). The reset reason and
 lifecycle breadcrumbs that survive a reset are in the boot log, not here.
 
 `POST /api/relay` takes exactly `{"on":true}` or `{"on":false}` and returns the same JSON. Anything else gets
 `400 {"ok":false,"error":"bad_request"}`. Turning the mode on while the box's own session holds the pedal gets
-`409 {"ok":false,"error":"busy"}` (section 2). Turning it off disconnects a connected client.
+`409 {"ok":false,"error":"busy"}` (section 2). Turning it off disconnects a connected client. The request needs the token
+(section 3c), or it gets `401 {"ok":false,"error":"unauthorized"}`.
 
 ## 9. Versioning
 

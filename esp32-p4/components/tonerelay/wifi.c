@@ -489,6 +489,7 @@ int tonerelay_wifi_factory_reset(void)
     nvs_erase_key(h, "ssid");
     nvs_erase_key(h, "pass");
     nvs_erase_key(h, "ap_pass");
+    nvs_erase_key(h, "token"); /* a new token is made at the next start: a reset box must be paired again */
     esp_err_t err = nvs_commit(h);
     nvs_close(h);
     ESP_LOGW(TAG, "factory reset: Wi-Fi network and hotspot password erased");

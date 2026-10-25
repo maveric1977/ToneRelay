@@ -23,6 +23,10 @@ static void parse_wifi_line(char *line)
         if (strcmp(line, "wifi-forget") == 0) {
             tonerelay_wifi_forget();
             printf("wifi credentials cleared\n");
+        } else if (strcmp(line, "token") == 0) {
+            char token[40];
+            tonerelay_relay_token(token, sizeof(token));
+            printf("token: %s\n", token);
         }
         return;
     }
@@ -81,7 +85,7 @@ static void console_task(void *arg)
 {
     (void)arg;
     char line[192];
-    printf("ToneRelay UART: wifi SSID password   |   wifi-forget\n");
+    printf("ToneRelay UART: wifi SSID password   |   wifi-forget   |   token\n");
     while (true) {
         if (!fgets(line, sizeof(line), stdin)) {
             clearerr(stdin);

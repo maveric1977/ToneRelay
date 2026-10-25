@@ -2,7 +2,7 @@
  * Raw relay (prototype): carries USB bulk transfers between one WebSocket client on /raw and the
  * pedal, without interpreting them. See docs/raw-relay-protocol.md (draft v0).
  *
- * Prototype limits, all deliberate: no token, no stale_session handling, and a failed upgrade is
+ * Prototype limits, all deliberate: no stale_session handling, and a failed upgrade is
  * reported with an `error` text frame and a close instead of HTTP 409. The mode is turned on with
  * POST /api/relay {"on":true}, which fails with 409 while the box's own session holds the pedal:
  * turn it on BEFORE attaching the pedal.
@@ -19,6 +19,7 @@
 #include "esp_system.h"
 #include "esp_timer.h"
 #include "esp_log.h"
+#include "esp_random.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
@@ -38,8 +39,13 @@
 #define CLIENT_SILENT_MS 6000
 /* The longest a single send to the /raw client may block. */
 #define SEND_TIMEOUT_S 2
+/* The box's token: 128 random bits as 32 hex characters, made on first boot and kept in NVS. A client must send it as
+ * `Authorization: Bearer <token>` on the /raw upgrade and on POST /api/relay. */
+#define TOKEN_LEN 32
+#define NVS_TOKEN_KEY "token"
 
 static volatile bool s_relay_only;
+static char s_token[TOKEN_LEN + 1];
 static SemaphoreHandle_t s_mu;      /* guards the client fields below */
 static SemaphoreHandle_t s_send_mu; /* one frame on the socket at a time */
 static SemaphoreHandle_t s_task_done;
@@ -102,12 +108,72 @@ static void nvs_load(void)
     s_relay_only = v != 0;
 }
 
+static void token_init(void)
+{
+    nvs_handle_t h;
+    bool have_nvs = nvs_open(NVS_NS, NVS_READWRITE, &h) == ESP_OK;
+    if (have_nvs) {
+        size_t len = sizeof(s_token);
+        if (nvs_get_str(h, NVS_TOKEN_KEY, s_token, &len) == ESP_OK && len == sizeof(s_token)) {
+            nvs_close(h);
+            return;
+        }
+    }
+    uint8_t raw[TOKEN_LEN / 2];
+    esp_fill_random(raw, sizeof(raw));
+    for (size_t i = 0; i < sizeof(raw); i++) {
+        snprintf(s_token + 2 * i, 3, "%02x", raw[i]);
+    }
+    if (have_nvs) {
+        nvs_set_str(h, NVS_TOKEN_KEY, s_token);
+        nvs_commit(h);
+        nvs_close(h);
+        ESP_LOGI(TAG, "made this box's token");
+    } else {
+        ESP_LOGE(TAG, "could not save the token: it is good until the next restart");
+    }
+}
+
+void tonerelay_relay_token(char *out, size_t cap)
+{
+    snprintf(out, cap, "%s", s_token);
+}
+
+/* Compares in time that depends only on the length, not on where the strings first differ. */
+static bool same_secret(const char *a, size_t alen, const char *b, size_t blen)
+{
+    if (alen != blen) {
+        return false;
+    }
+    unsigned char diff = 0;
+    for (size_t i = 0; i < alen; i++) {
+        diff |= (unsigned char)(a[i] ^ b[i]);
+    }
+    return diff == 0;
+}
+
+/* `Authorization: Bearer <token>`. A native client can set the header; a browser cannot on a WebSocket, and is kept out by the Origin check. */
+static bool token_ok(httpd_req_t *req)
+{
+    char v[64];
+    size_t n = httpd_req_get_hdr_value_len(req, "Authorization");
+    if (n == 0 || n >= sizeof(v) || httpd_req_get_hdr_value_str(req, "Authorization", v, sizeof(v)) != ESP_OK) {
+        return false;
+    }
+    if (strncasecmp(v, "Bearer ", 7) != 0) {
+        return false;
+    }
+    const char *t = v + 7;
+    return same_secret(t, strlen(t), s_token, TOKEN_LEN);
+}
+
 void tonerelay_relay_start(void)
 {
     s_mu = xSemaphoreCreateMutex();
     s_send_mu = xSemaphoreCreateMutex();
     s_task_done = xSemaphoreCreateBinary();
     nvs_load();
+    token_init();
     s_boot_reason = (int)esp_reset_reason();
     if (s_cr_magic == CR_MAGIC) {
         memcpy(s_prev, s_cr, sizeof(s_prev));
@@ -301,6 +367,9 @@ static esp_err_t raw_handler(httpd_req_t *req)
         if (!origin_allowed(req)) {
             return refuse(req, "origin_not_allowed");
         }
+        if (!token_ok(req)) {
+            return refuse(req, "unauthorized");
+        }
         if (!s_relay_only) {
             return refuse(req, "relay_unavailable");
         }
@@ -466,6 +535,9 @@ static esp_err_t json_reply(httpd_req_t *req, const char *status, const char *bo
 static esp_err_t relay_api(httpd_req_t *req)
 {
     if (req->method == HTTP_POST) {
+        if (!token_ok(req)) {
+            return json_reply(req, "401 Unauthorized", "{\"ok\":false,\"error\":\"unauthorized\"}");
+        }
         char body[64];
         size_t want = req->content_len;
         if (want == 0 || want >= sizeof(body)) {
@@ -502,7 +574,7 @@ static esp_err_t relay_api(httpd_req_t *req)
     clean(se, sizeof(se), serial);
     char out[400];
     snprintf(out, sizeof(out),
-             "{\"ok\":true,\"relay_only\":%s,\"client\":%s,\"proto\":%d,\"profile\":\"%s\","
+             "{\"ok\":true,\"relay_only\":%s,\"client\":%s,\"proto\":%d,\"profile\":\"%s\",\"auth\":\"bearer\","
              "\"pedal\":{\"present\":%s,\"pid\":\"0x%04x\",\"vid\":\"0x0e41\",\"product\":\"%s\",\"serial\":\"%s\"}}",
              s_relay_only ? "true" : "false", s_active ? "true" : "false", PROTO, tonerelay_profile()->name,
              helix_usb_present() ? "true" : "false", (unsigned)helix_usb_pid(), pe, se);
