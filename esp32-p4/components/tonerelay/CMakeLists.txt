@@ -27,6 +27,7 @@ idf_component_register(
     SRCS
         "usb.c"
         "wifi.c"
+        "reset_button.c"
         "http.c"
         "ble.c"
         "tonerelay.c"
