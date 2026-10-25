@@ -46,6 +46,15 @@ wifi-forget
 
 The password is not logged. `wifi-forget` clears the **home STA** credentials only. It does not remove the ToneRelay hotspot password.
 
+### Factory reset (BOOT button)
+
+Hold the board's **BOOT** button for 5 seconds while the firmware is running. The box forgets the home network **and** the hotspot password, restarts, and raises
+its open **ToneRelay** setup network again, as a new box does. The catalog on flash is kept. Do not hold BOOT while the board powers up or resets: that starts the
+chip's download mode instead. The NANO has only a power LED, so nothing blinks; the setup network reappearing about 5 seconds after the restart is the sign.
+
+To do the same from a computer, `scripts/provision.sh -p /dev/ttyACM0` writes an empty settings partition (NVS) to the board and nothing else; `--dry-run` shows what
+it would write. It needs ESP-IDF's tools (`IDF_PATH`) and `espflash`.
+
 ## Helix USB
 
 Plug the Helix into the P4 **USB-A** port. After setup, the editor shows a modal if the Helix is unplugged. Logs should show `HX device pid=4248` then `usb session opened`. Only vendor interface 0 is claimed (audio/HID are left alone). The session still does the claim/release/claim dance and posted IN read from `hx-usb`. If the Helix was already wedged, pull its **9V** — a USB replug is not enough.

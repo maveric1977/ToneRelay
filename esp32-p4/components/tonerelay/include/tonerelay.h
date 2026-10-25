@@ -44,6 +44,8 @@ int tonerelay_wifi_join(const char *ssid, const char *pass);
 int tonerelay_wifi_ap_password(const char *pass);
 int tonerelay_wifi_status_json(char *buf, size_t len);
 int tonerelay_wifi_forget(void);
+int tonerelay_wifi_factory_reset(void); /* forget the Wi-Fi network and the hotspot password (the caller restarts) */
+void tonerelay_reset_button_start(void); /* hold BOOT for 5 s to run the factory reset */
 bool tonerelay_wifi_setup_required(void);
 bool tonerelay_wifi_ap_secured(void);
 bool tonerelay_wifi_sta_configured(void);

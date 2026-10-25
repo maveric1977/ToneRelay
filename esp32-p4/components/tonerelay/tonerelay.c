@@ -108,6 +108,7 @@ void tonerelay_start(void)
      * the already-plugged Helix before C6 traffic starts. */
     vTaskDelay(pdMS_TO_TICKS(400));
     tonerelay_wifi_start();
+    tonerelay_reset_button_start();
     tonerelay_c6_sync();
     tonerelay_http_start();
     /* C6 2.12.13 VHCI does not answer HCI reset; NimBLE then retries every 2s
