@@ -184,12 +184,13 @@ the pedal's session close (it knows nothing of the pedal's protocol).
 `GET /api/relay` returns, without opening the pedal:
 
 ```json
-{"ok":true,"relay_only":true,"client":false,"proto":0,"profile":"tonerelay","auth":"bearer",
+{"ok":true,"relay_only":true,"client":false,"proto":0,"profile":"tonerelay","auth":"bearer","id":"e7fb0b",
  "pedal":{"present":true,"pid":"0x424a","vid":"0x0e41","product":"HELIX   ","serial":"   0000123"}}
 ```
 
 `client` is true while a client holds the pedal. `profile` is the name of the firmware's profile (section 3b). `auth` says how the
-box is secured (`bearer`: it wants the token, section 3c). The reset reason and
+box is secured (`bearer`: it wants the token, section 3c). `id` is the same id the box puts in its mDNS record: a client that knows a
+box by its id can find it again when the box joins another network and gets another address. The reset reason and
 lifecycle breadcrumbs that survive a reset are in the boot log, not here.
 
 `POST /api/relay` takes exactly `{"on":true}` or `{"on":false}` and returns the same JSON. Anything else gets

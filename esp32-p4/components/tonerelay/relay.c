@@ -572,11 +572,13 @@ static esp_err_t relay_api(httpd_req_t *req)
     helix_usb_cached_strings(product, sizeof(product), serial, sizeof(serial));
     clean(pe, sizeof(pe), product);
     clean(se, sizeof(se), serial);
-    char out[400];
+    char id[8];
+    tonerelay_profile_id(id, sizeof(id));
+    char out[440];
     snprintf(out, sizeof(out),
-             "{\"ok\":true,\"relay_only\":%s,\"client\":%s,\"proto\":%d,\"profile\":\"%s\",\"auth\":\"bearer\","
+             "{\"ok\":true,\"relay_only\":%s,\"client\":%s,\"proto\":%d,\"profile\":\"%s\",\"auth\":\"bearer\",\"id\":\"%s\","
              "\"pedal\":{\"present\":%s,\"pid\":\"0x%04x\",\"vid\":\"0x0e41\",\"product\":\"%s\",\"serial\":\"%s\"}}",
-             s_relay_only ? "true" : "false", s_active ? "true" : "false", PROTO, tonerelay_profile()->name,
+             s_relay_only ? "true" : "false", s_active ? "true" : "false", PROTO, tonerelay_profile()->name, id,
              helix_usb_present() ? "true" : "false", (unsigned)helix_usb_pid(), pe, se);
     httpd_resp_set_type(req, "application/json");
     return httpd_resp_sendstr(req, out);
