@@ -716,6 +716,48 @@ int tonerelay_wifi_forget(void)
     return 0;
 }
 
+int tonerelay_wifi_forget_one(const char *ssid)
+{
+    if (!ssid || !ssid[0]) {
+        return -1;
+    }
+    net_t nets[MAX_NETS];
+    int n = nvs_load_nets(nets);
+    net_t keep[MAX_NETS];
+    int m = 0;
+    bool found = false;
+    for (int i = 0; i < n; i++) {
+        if (strcmp(nets[i].ssid, ssid) == 0) {
+            found = true;
+        } else {
+            keep[m++] = nets[i];
+        }
+    }
+    memset(nets, 0, sizeof(nets));
+    if (!found) {
+        memset(keep, 0, sizeof(keep));
+        return 1;
+    }
+    esp_err_t err = nvs_store_nets(keep, m);
+    memset(keep, 0, sizeof(keep));
+    if (err != ESP_OK) {
+        return -2;
+    }
+    if (strcmp(s_skip, ssid) == 0) {
+        s_skip[0] = 0;
+    }
+    if (m == 0) {
+        return tonerelay_wifi_forget();
+    }
+    if (s_sta_up && strcmp(s_sta_ssid, ssid) == 0) {
+        /* The network in use is gone from the list: let go, and the retry that follows joins another saved one. */
+        s_leaving = true;
+        esp_wifi_disconnect();
+    }
+    ESP_LOGI(TAG, "forgot one network, %d left", m);
+    return 0;
+}
+
 int tonerelay_wifi_factory_reset(void)
 {
     nvs_handle_t h;
