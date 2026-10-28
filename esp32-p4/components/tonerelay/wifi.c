@@ -35,6 +35,7 @@ static esp_timer_handle_t s_sta_retry_timer;
 static esp_timer_handle_t s_ap_timer;
 static bool s_ap_on;
 static bool s_choosing; /* a scan is running to pick which saved network to join */
+static volatile bool s_connecting; /* an attempt to join is under way (from esp_wifi_connect until an address or a disconnect) */
 static bool s_leaving; /* the box let go of its network on purpose: that disconnect is not a failed attempt */
 static char s_skip[33]; /* the network whose last attempt failed: tried again only when nothing else is in range */
 /* For a profile whose setup network is only for setup (setup_ap_only): how long after the box has joined a network the setup
@@ -301,19 +302,30 @@ static void arm_ap_fallback(void)
     }
 }
 
+static void schedule_sta_retry(void);
+
 static void start_sta(const char *ssid, const char *pass, bool fresh)
 {
     wifi_config_t sta = {0};
     strncpy((char *)sta.sta.ssid, ssid, sizeof(sta.sta.ssid) - 1);
     strncpy((char *)sta.sta.password, pass ? pass : "", sizeof(sta.sta.password) - 1);
     sta.sta.threshold.authmode = (pass && pass[0]) ? WIFI_AUTH_WPA2_PSK : WIFI_AUTH_OPEN;
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &sta));
     strncpy(s_sta_ssid, ssid, sizeof(s_sta_ssid) - 1);
     if (fresh) {
         s_retry = 0;
     }
     ESP_LOGI(TAG, "STA joining ssid=%s", ssid);
-    ESP_ERROR_CHECK(esp_wifi_connect());
+    /* A rejected call is not fatal: the radio may be busy (a scan, or an attempt already under way). Try again later. */
+    esp_err_t err = esp_wifi_set_config(WIFI_IF_STA, &sta);
+    if (err == ESP_OK) {
+        err = esp_wifi_connect();
+    }
+    if (err == ESP_OK) {
+        s_connecting = true;
+    } else if (err != ESP_ERR_WIFI_CONN) {
+        ESP_LOGW(TAG, "STA connect to %s was refused (%s); will retry", ssid, esp_err_to_name(err));
+        schedule_sta_retry();
+    }
 }
 
 static void schedule_sta_retry(void);
@@ -369,10 +381,10 @@ static void on_scan_done(void)
         int rssi = 0;
         bool here = false;
         for (uint16_t k = 0; k < got; k++) {
-            if (strcmp((const char *)recs[k].ssid, nets[i].ssid) == 0) {
+            /* Several access points can share a name (a router and its repeater): the strongest one counts. */
+            if (strcmp((const char *)recs[k].ssid, nets[i].ssid) == 0 && (!here || recs[k].rssi > rssi)) {
                 here = true;
                 rssi = recs[k].rssi;
-                break;
             }
         }
         if (!here) {
@@ -394,7 +406,10 @@ static void on_scan_done(void)
         start_sta(nets[pick].ssid, nets[pick].pass, false);
     } else if (n > 0) {
         ESP_LOGW(TAG, "none of the %d saved networks is in range", n);
-        schedule_sta_retry();
+        /* A disconnect that led here has already scheduled the next retry. */
+        if (!s_sta_retry_timer || !esp_timer_is_active(s_sta_retry_timer)) {
+            schedule_sta_retry();
+        }
         arm_ap_fallback();
     }
     free(recs);
@@ -408,10 +423,16 @@ static void wifi_worker(void *arg)
     while (xQueueReceive(s_req_q, &req, portMAX_DELAY) == pdTRUE) {
         switch (req) {
         case REQ_JOIN_FRESH:
-            join_saved(true);
+            /* The station can report that it started more than once, a few tens of ms apart: a choice or an attempt already
+             * under way is not started again, which would cut the scan short and connect to the first network unchecked. */
+            if (s_choosing || s_connecting || s_sta_up) {
+                ESP_LOGW(TAG, "station start while already joining: ignored");
+            } else {
+                join_saved(true);
+            }
             break;
         case REQ_JOIN_RETRY:
-            if (s_sta_configured && !s_sta_up && !s_choosing) {
+            if (s_sta_configured && !s_sta_up && !s_choosing && !s_connecting) {
                 join_saved(false);
             }
             break;
@@ -429,8 +450,13 @@ static void wifi_worker(void *arg)
 
 static void post_req(uint8_t req)
 {
-    if (s_req_q) {
-        xQueueSend(s_req_q, &req, 0);
+    if (s_req_q && xQueueSend(s_req_q, &req, pdMS_TO_TICKS(100)) != pdTRUE) {
+        ESP_LOGW(TAG, "wifi request %d dropped: the queue is full", req);
+        if (req == REQ_SCAN_DONE) {
+            /* The choice would never be made and nothing else would start one. */
+            s_choosing = false;
+            schedule_sta_retry();
+        }
     }
 }
 
@@ -481,6 +507,7 @@ static void on_wifi(void *arg, esp_event_base_t base, int32_t id, void *data)
             strncpy(s_skip, s_sta_ssid, sizeof(s_skip) - 1);
         }
         s_leaving = false;
+        s_connecting = false;
         s_sta_up = false;
         s_sta_ip[0] = 0;
         schedule_sta_retry();
@@ -489,6 +516,7 @@ static void on_wifi(void *arg, esp_event_base_t base, int32_t id, void *data)
         ip_event_got_ip_t *ev = (ip_event_got_ip_t *)data;
         snprintf(s_sta_ip, sizeof(s_sta_ip), IPSTR, IP2STR(&ev->ip_info.ip));
         s_sta_up = true;
+        s_connecting = false;
         s_retry = 0;
         if (s_sta_retry_timer) {
             esp_timer_stop(s_sta_retry_timer);
@@ -623,6 +651,7 @@ int tonerelay_wifi_join(const char *ssid, const char *pass)
         esp_timer_stop(s_sta_retry_timer);
     }
     s_choosing = false;
+    s_connecting = false;
     s_skip[0] = 0;
     if (was_up) {
         /* A connected radio does not move to another network by itself: let go, and the retry that follows picks among the saved ones. */
@@ -703,6 +732,7 @@ int tonerelay_wifi_forget(void)
     nvs_erase_sta();
     s_sta_configured = false;
     s_choosing = false;
+    s_connecting = false;
     s_sta_up = false;
     s_sta_ssid[0] = 0;
     s_sta_ip[0] = 0;

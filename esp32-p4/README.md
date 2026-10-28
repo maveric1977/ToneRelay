@@ -47,7 +47,7 @@ wifi-forget
 The password is not logged. The box keeps up to three networks, the one joined last first: each `wifi` command (and each join from the
 setup page) adds one, and when there are three the one joined longest ago is dropped. At power-up with more than one saved, the box looks
 for them and joins the one joined last if it is in range, else the strongest of the others; a saved network that is not in range is not
-tried. `wifi-forget` clears **all** saved STA networks. It does not remove the ToneRelay hotspot password. Holding BOOT for 5 s clears the networks and the hotspot password.
+tried. `wifi-forget` clears **all** saved STA networks. It does not remove the ToneRelay hotspot password. Holding BOOT for 5 s clears the networks, the hotspot password and the token (see the factory reset section). A hidden network is only joined when it is the only one saved: the look for several saved networks does not list hidden ones.
 
 ### Factory reset (BOOT button)
 

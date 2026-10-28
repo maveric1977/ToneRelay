@@ -109,7 +109,22 @@ address the setup network goes off; if the Wi-Fi is lost for 40 s it comes back.
 address, and the BOOT hold ran the reset after 5.0 s; a phone kept listing the network name for 3 to 5 minutes after it had gone.
 With a saved network that does not exist, the first join attempt was at 5.3 s and the setup network was back on at 45.1 s, 39.8 s later.] A profile may also supply its own `GET /` page (it can use the `wifi_scan`, `wifi_join`
 and `wifi_status` operations of `/api/cmd`); without one, `GET /` is the ToneRelay editor. Holding the BOOT button for 5 s forgets
-the Wi-Fi network and the hotspot password and restarts the box, in every profile.
+the Wi-Fi networks, the hotspot password and the token, and restarts the box, in every profile.
+
+The box keeps up to three Wi-Fi networks, the one joined last first. Three operations of `/api/cmd` concern them (the same open surface as
+the forget-all that was already there):
+
+- `wifi_status` lists the names in `"saved"` (never the passwords).
+- `wifi_forget` with no `ssid` forgets every saved network; with an `ssid` it forgets that one (`"found":false` if it is not saved; an
+  empty `ssid` is an error and forgets nothing). Forgetting the one in use lets go of it and the box joins another; forgetting the last
+  one is a full forget.
+- `wifi_join` adds a network as the newest. While the box is connected it is not a "switch now": the box lets go of the network in use and
+  looks again, and joins the saved network that is in range (the one joined last if it is here, else the strongest of the others; esp32-p4/README.md). If that look misses the new network, the box joins another
+  saved one, and that one moves to the front. A client should check the `ssid` in `wifi_status` and not assume the named network was joined.
+
+With more than one saved, the box scans for them without hidden networks (`show_hidden` is off), so a hidden network is not in range and
+is not tried; with a single saved network it connects to it directly, hidden or not. When several access points share a name the strongest
+one counts.
 
 Two boxes with a profile that gives a fixed host name both ask for it. The instance names can differ (when the profile adds the id),
 so a client that discovers by service should use the address in the record and not the host name. [Not tested: only one box was
