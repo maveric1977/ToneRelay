@@ -44,6 +44,7 @@ mod ffi {
         pub fn tonerelay_wifi_ap_password(pass: *const c_char) -> i32;
         pub fn tonerelay_wifi_status_json(buf: *mut c_char, len: usize) -> i32;
         pub fn tonerelay_wifi_forget() -> i32;
+        pub fn tonerelay_wifi_forget_one(ssid: *const c_char) -> i32;
         pub fn tonerelay_wifi_setup_required() -> bool;
         pub fn tonerelay_wifi_ap_secured() -> bool;
         pub fn tonerelay_wifi_sta_configured() -> bool;
@@ -184,12 +185,7 @@ impl Bridge {
             "wifi_join" => wifi_join(&cmd),
             "wifi_ap_password" => wifi_ap_password(&cmd),
             "wifi_status" => wifi_status(),
-            "wifi_forget" => {
-                unsafe {
-                    ffi::tonerelay_wifi_forget();
-                }
-                json!({"ok": true, "op": "wifi_forget"})
-            }
+            "wifi_forget" => wifi_forget(&cmd),
             "ping" => json!({"ok": true, "op": "ping", "pong": true}),
             "info" => self.info(),
             _ => {
@@ -405,6 +401,24 @@ fn wifi_ap_password(cmd: &Value) -> Value {
         json!({"ok": true, "op": "wifi_ap_password"})
     } else {
         json!({"ok": false, "op": "wifi_ap_password", "error": "could not set password"})
+    }
+}
+
+/// `{"op":"wifi_forget"}` forgets every saved network; with `"ssid"` it forgets that one.
+fn wifi_forget(cmd: &Value) -> Value {
+    let Some(ssid) = cmd.get("ssid").and_then(Value::as_str) else {
+        unsafe {
+            ffi::tonerelay_wifi_forget();
+        }
+        return json!({"ok": true, "op": "wifi_forget"});
+    };
+    let Ok(ssid_c) = CString::new(ssid) else {
+        return json!({"ok": false, "op": "wifi_forget", "error": "ssid invalid"});
+    };
+    match unsafe { ffi::tonerelay_wifi_forget_one(ssid_c.as_ptr()) } {
+        0 => json!({"ok": true, "op": "wifi_forget", "found": true}),
+        1 => json!({"ok": true, "op": "wifi_forget", "found": false}),
+        _ => json!({"ok": false, "op": "wifi_forget", "error": "could not forget that network"}),
     }
 }
 
